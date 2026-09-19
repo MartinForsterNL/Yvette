@@ -1,7 +1,7 @@
-# voice-ai
+# Yvette Voice Avatar AI
 
-A single-package voice assistant: speech-to-text, LLM chat, text-to-speech, and a
-talking-head avatar, all behind one backend and one settings UI.
+A talking-head voice assistant: speech-to-text, LLM chat, text-to-speech, and a
+lip-synced avatar, all behind one backend and one settings UI.
 
 Three former servers (TTS, talk, avatar) are merged into one FastAPI app. Heavy
 models run as internal subprocesses; lightweight models run in-process.
@@ -9,7 +9,7 @@ models run as internal subprocesses; lightweight models run in-process.
 ## What it does
 
 - **Hold-to-talk UI** - record audio or type; replies stream back as speech
-- **Full chat flow** - mic → Whisper (STT) → LLM → sentence chunking → TTS → avatar video
+- **Full chat flow** - mic -> Whisper (STT) -> LLM -> sentence chunking -> TTS -> avatar video
 - **Talking-head avatar** - DITTO renders a face that lip-syncs each reply; an idle
   "breathing" loop plays between turns (both optional, toggled in settings)
 - **Multiple voices** - Breeze (clone + design + direction), OmniVoice, Lux, Kokoro
@@ -20,19 +20,31 @@ models run as internal subprocesses; lightweight models run in-process.
 - **Tool calling** - web search, web fetch, weather, and a personal file store
 - **Per-profile history** - separate chat history per personality profile
 
+## Install
+
+This repo ships the app code and an installer. The heavy model backends are
+downloaded and built on your machine by the installer - they are not committed.
+
+See **install-readme.md** for the full, step-by-step guide. The short version:
+
+1. Install the prerequisites: Windows 10/11, an NVIDIA GPU (24 GB VRAM
+   recommended), Python 3.10, Git + Git LFS, ffmpeg, CUDA 12.0, cuDNN 8.9.x,
+   and TensorRT 8.6.1.6 (exact versions and links are in install-readme.md).
+2. Edit install-config.ps1 (your Hugging Face token).
+3. Run .\install.ps1 - it clones the backends, creates the venvs, downloads the
+   models, and builds the DITTO TensorRT engines for your GPU.
+4. Run start.bat, then open http://localhost:8900 (talk UI) and
+   http://localhost:8900/admin (admin UI).
+
 ## Architecture
 
 ```
-voice-ai/
-  server.py            # the merged FastAPI app (chat flow + TTS + avatar + settings + auth)
-  config.yaml          # one config for everything
-  tts/                 # TTS module (registry + backends + STT + voices)
-  static/              # talk UI + avatars + idle videos
-  static/admin/        # backend admin UI (voice clone/design, TTS tester, unload)
-  output/              # generated audio + per-turn files (audio + video)
-  voices/              # voice profiles + reference audio
-  memory.py            # long-term memory (brain)
-  personalities/ skills/  # persona + skill definitions
+server.py            # merged FastAPI app (chat flow + TTS + avatar + settings + auth)
+config.yaml          # one config for everything
+tts/                 # TTS module (registry + backends + STT + voices)
+static/              # talk UI + admin UI + default avatar + idle video
+memory.py            # long-term memory (brain)
+engines/             # created by install.ps1: the 4 backend venvs + models (gitignored)
 ```
 
 ### How the models run
@@ -49,66 +61,9 @@ voice-ai/
 Each subprocess backend is spawned on first use (lazy) and can be unloaded to
 free VRAM from the admin UI.
 
-## Installation
-
-### Prerequisites
-
-- Windows 11 (or Linux) with a CUDA-capable NVIDIA GPU (24 GB recommended)
-- Python 3.10+
-- ffmpeg on PATH
-- Git
-
-### Orchestrator (the main app)
-
-```bash
-python -m venv venv
-venv\Scripts\pip install -r requirements.txt
-```
-
-### Backend subprocesses (each in its own venv)
-
-The heavy models need their own environments (incompatible dependency sets).
-
-**Breeze (PyTorch/CUDA):**
-
-```bash
-git clone https://github.com/breezeblue-ai/breeze-tts.git
-python -m venv breeze-cuda/venv
-breeze-cuda/venv/Scripts/pip install torch==2.9.1 torchaudio==2.9.1 --index-url https://download.pytorch.org/whl/cu128
-breeze-cuda/venv/Scripts/pip install qwen-tts==0.1.1 transformers==4.57.3 soundfile fastapi uvicorn python-multipart numpy
-# download the checkpoint (gated; needs a HuggingFace token)
-breeze-cuda/venv/Scripts/python -c "from huggingface_hub import snapshot_download; snapshot_download('BreezeBlue/breeze-tts-2', token='HF_TOKEN', local_dir='breeze-tts-2')"
-```
-
-**OmniVoice / Lux / DITTO:** see their respective upstream repos. Point
-`config.yaml` at each one's venv + script.
-
-DITTO additionally needs **NVIDIA TensorRT** at runtime. Download
-`TensorRT-8.6.1.6.Windows10.x86_64.cuda-12.0` from NVIDIA and point
-`ditto.tensorrt_lib` at its `lib` folder. TensorRT is free to use but
-proprietary - it is **not** bundled here and must not be redistributed.
-
-### Configuration
-
-Copy `config.yaml` and edit:
-
-- `llm` - your LLM endpoint (OpenAI-compatible `/v1/chat/completions`)
-- `tts` - default voice + engine
-- `models` - paths to each backend's venv / script / model
-- `auth` - UI username/password + API token
-- `ditto` - avatar image dir + the ditto server paths
-- `stt` - Whisper model (default `large-v3-turbo`)
-
-### Run
-
-```bash
-venv\Scripts\python server.py
-```
-
-Then open `http://localhost:8900` (the talk UI) and `http://localhost:8900/admin`
-(the backend admin UI). Log in with the credentials from `config.yaml`.
-
 ## Settings
+
+Everything is configured from the admin UI (http://localhost:8900/admin):
 
 - **Profile** - personality + voice + model, saved per profile
 - **Clone / Design** - which voice the avatar speaks with
@@ -116,8 +71,8 @@ Then open `http://localhost:8900` (the talk UI) and `http://localhost:8900/admin
 - **Show idle avatar** - the background "breathing" loop
 - **Bubble / text opacity** - transparency of the chat overlay
 - **Mode** - chunked (stream per sentence) or full
-- **Model** - which LLM (8b / 27b / ...)
-- **TTS engine** - breeze / omnivoice / lux
+- **Model** - the LLM (any OpenAI-compatible endpoint, set in the LLMs tab)
+- **TTS engine** - breeze / omnivoice / lux / kokoro
 
 ## License
 

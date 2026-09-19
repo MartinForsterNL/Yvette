@@ -3,14 +3,15 @@
 A talking-head voice assistant: speech-to-text, chat, text-to-speech, and a
 lip-synced avatar, all behind one backend.
 
-The heavy AI models run as four separate backends, each in its own Python
-environment so their dependency sets can't clash. This guide covers how to get
-those four backends installed and working.
+The app (the orchestrator) ships in this repo. The heavy AI models run as four
+separate backends, each in its own Python environment so their dependency sets
+can't clash. This guide covers how to install everything.
 
 ## What gets installed
 
-| Backend    | Purpose                          | Upstream repo |
-|------------|----------------------------------|---------------|
+| Component   | Purpose                          | Source |
+|-------------|----------------------------------|--------|
+| voice-ai app | Orchestrator (chat, TTS, avatar, UI) | this repo |
 | DITTO      | Talking-head avatar (lip-sync)   | justinjohn0306/ditto-talkinghead-windows |
 | Breeze     | Text-to-speech (Breeze TTS 2)    | breezeblue-ai/breeze-tts |
 | OmniVoice  | Text-to-speech (multilingual)    | k2-fsa/OmniVoice |
