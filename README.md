@@ -75,7 +75,7 @@ engines/             # created by install.ps1: the 4 backend venvs + models (git
 | Kokoro (TTS) | in-process             | CPU |
 | Breeze (TTS) | subprocess (own venv)  | CUDA |
 | OmniVoice    | subprocess (own venv)  | CUDA |
-| Lux          | subprocess (own venv)  | CUDA |
+| LuxTTS       | subprocess (own venv)  | CUDA |
 | DITTO (avatar)| subprocess (own venv) | CUDA (TensorRT) |
 
 Each subprocess backend is spawned on first use (lazy) and can be unloaded to
@@ -92,7 +92,7 @@ Everything is configured from the admin UI (http://localhost:8900/admin):
 - **Bubble / text opacity** - transparency of the chat overlay
 - **Mode** - chunked (stream per sentence) or full
 - **Model** - the LLM (any OpenAI-compatible endpoint, set in the LLMs tab)
-- **TTS engine** - breeze / omnivoice / lux / kokoro
+- **TTS engine** - breeze / omnivoice / LuxTTS / kokoro
 
 ## License
 
@@ -100,7 +100,7 @@ Source code is licensed under the Apache License 2.0. **Model weights are NOT
 included** and are governed by their own licenses:
 
 - **Breeze TTS 2** (`BreezeBlue/breeze-tts-2`): research / non-commercial only
-- **DITTO**, **OmniVoice**, **Lux**, **Whisper**, **Kokoro**: see each upstream repo
+- **DITTO**, **OmniVoice**, **LuxTTS**, **Whisper**, **Kokoro**: see each upstream repo
 - **NVIDIA TensorRT**: proprietary, download separately from NVIDIA - not redistributable
 
 Download model weights at setup time; do not redistribute them commercially.
