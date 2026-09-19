@@ -11,11 +11,14 @@ can't clash. This guide covers how to install everything.
 
 | Component   | Purpose                          | Source |
 |-------------|----------------------------------|--------|
-| voice-ai app | Orchestrator (chat, TTS, avatar, UI) | this repo |
+| Yvette Voice Avatar AI | Orchestrator (chat, TTS, avatar, UI) | this repo |
 | DITTO      | Talking-head avatar (lip-sync)   | justinjohn0306/ditto-talkinghead-windows |
 | Breeze     | Text-to-speech (Breeze TTS 2)    | breezeblue-ai/breeze-tts |
 | OmniVoice  | Text-to-speech (multilingual)    | k2-fsa/OmniVoice |
 | LuxTTS     | Text-to-speech (voice cloning)   | ysharma3501/LuxTTS |
+| Whisper (STT) | Speech-to-text, in-process | large-v3-turbo |
+| Kokoro (TTS)  | Text-to-speech, in-process, CPU | bf_isabella |
+| Embeddings    | Memory embeddings, in-process | Qwen/Qwen3-Embedding-0.6B |
 
 ## System requirements
 
@@ -56,16 +59,15 @@ Install ffmpeg and make sure it is on your PATH.
 
 Download: https://ffmpeg.org/download.html
 
-### 4. CUDA 12.0 toolkit
+### 4. CUDA 12.8 toolkit
 
-The TensorRT build this system uses targets CUDA 12.0. Install the CUDA 12.0
-toolkit (runtime is enough; the full toolkit is fine too).
+Install the CUDA 12.8 toolkit (runtime is enough; the full toolkit is fine too).
 
-Download: https://developer.nvidia.com/cuda-12-0-0-download-archive
+Download: https://developer.nvidia.com/cuda-12-8-0-download-archive
 
 ### 5. cuDNN 8.9.x
 
-Install cuDNN 8.9.x. This version matches CUDA 12.0 and TensorRT 8.6.1.6. Use
+Install cuDNN 8.9.x. This version matches TensorRT 8.6.1.6. Use
 8.9.0 or any later 8.9 release (8.9.2, 8.9.7, etc).
 
 This requires a free NVIDIA account.
@@ -73,8 +75,8 @@ This requires a free NVIDIA account.
 Download: https://developer.nvidia.com/cudnn-archive
 
 Pick "cuDNN 8.9.x for CUDA 12.x". After installing, copy the cuDNN DLLs
-(cudnn64_8.dll and the others in its bin folder) into your CUDA 12.0 bin folder
-(C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.0\bin), which is the
+(cudnn64_8.dll and the others in its bin folder) into your CUDA bin folder
+(C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin or equivalent), which is the
 standard cuDNN install step.
 
 ### 6. TensorRT 8.6.1.6
@@ -162,7 +164,7 @@ It will:
 
 ---
 
-## Part 3 - What the four backends look like after install
+## Part 3 - What the install looks like
 
 ```
 engines/
@@ -225,7 +227,8 @@ Then open http://localhost:8900 (talk UI) and http://localhost:8900/admin
 - DITTO's upstream README installs it with conda, but this project installs it in
   a plain Python venv (matching the reference setup, which works fine). You do
   not need conda, Miniconda, or micromamba.
-- config.yaml ships with default credentials (Admin / Testing123, empty
-  api_token). install.ps1 writes a random api_token and your HF token into it,
-  so git shows it as modified after install. If you contribute back, freeze it
-  with: `git update-index --skip-worktree config.yaml`
+- config.yaml and install-config.ps1 ship with defaults (Admin / Testing123,
+  empty api_token, empty HF token). After install, config.yaml has your api_token
+  and HF token, and install-config.ps1 has your HF token, so git shows them as
+  modified. If you contribute back, freeze them with:
+  `git update-index --skip-worktree config.yaml install-config.ps1`
