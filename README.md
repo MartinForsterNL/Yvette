@@ -28,8 +28,12 @@ the personality that feels right. Make it yours.
 
 - Windows 10 or 11
 - An NVIDIA GPU (CUDA-capable). Ampere or newer (RTX 30/40/50 series) is
-  recommended. 16 GB VRAM minimum, 24 GB recommended.
+  recommended. 12 GB VRAM minimum.
 - About 60 GB of free disk space
+
+How much VRAM you need depends mostly on the LLM you run. 12 GB is a safe
+minimum; with a smaller LLM (or the LLM on a separate machine) even 10 GB
+can work.
 
 The full software prerequisites (Python, CUDA, cuDNN, TensorRT) are listed in
 install-readme.md.
@@ -43,9 +47,9 @@ downloaded and built on your machine by the installer - they are not committed.
 
 See **install-readme.md** for the full, step-by-step guide. The short version:
 
-1. Install the prerequisites: Windows 10/11, an NVIDIA GPU (24 GB VRAM
-   recommended), Python 3.10, Git + Git LFS, ffmpeg, CUDA 12.0, cuDNN 8.9.x,
-   and TensorRT 8.6.1.6 (exact versions and links are in install-readme.md).
+1. Install the prerequisites: Windows 10/11, an NVIDIA GPU, Python 3.10, Git
+   + Git LFS, ffmpeg, CUDA 12.0, cuDNN 8.9.x, and TensorRT 8.6.1.6 (exact
+   versions and links are in install-readme.md).
 2. Edit install-config.ps1 (your Hugging Face token).
 3. Run .\install.ps1 - it clones the backends, creates the venvs, downloads the
    models, and builds the DITTO TensorRT engines for your GPU.
