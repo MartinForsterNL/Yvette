@@ -1,24 +1,24 @@
 # Yvette Voice Avatar AI
 
-A talking-head voice assistant: speech-to-text, LLM chat, text-to-speech, and a
-lip-synced avatar, all behind one backend and one settings UI.
-
-Three former servers (TTS, talk, avatar) are merged into one FastAPI app. Heavy
-models run as internal subprocesses; lightweight models run in-process.
+A voice assistant with a face. You talk to it (or type), and it answers in
+speech while an animated avatar on screen moves its lips in sync. It runs
+entirely on your own machine.
 
 ## What it does
 
-- **Hold-to-talk UI** - record audio or type; replies stream back as speech
-- **Full chat flow** - mic -> Whisper (STT) -> LLM -> sentence chunking -> TTS -> avatar video
-- **Talking-head avatar** - DITTO renders a face that lip-syncs each reply; an idle
-  "breathing" loop plays between turns (both optional, toggled in settings)
-- **Multiple voices** - Breeze (clone + design + direction), OmniVoice, Lux, Kokoro
-- **Voice cloning / design** - create custom voices from reference audio or a text
-  description (in the admin UI)
-- **Long-term memory** - the assistant remembers facts across sessions, with a
-  daily curator
-- **Tool calling** - web search, web fetch, weather, and a personal file store
-- **Per-profile history** - separate chat history per personality profile
+- **Talk to it** - hold the button and speak, or just type. It replies with a
+  spoken answer.
+- **A face that talks back** - an animated avatar moves its lips in sync with
+  what it says, and breathes gently between replies. You can turn this off if
+  you only want the voice.
+- **Pick a voice** - choose from built-in voices, or make your own: clone a
+  voice from a short audio sample, or describe the voice you want in plain text.
+- **It remembers** - it keeps notes on what you tell it, so it can pick up where
+  you left off in a later conversation.
+- **It can do things for you** - search the web, read a web page, check the
+  weather, and keep a small set of files for you.
+- **Separate personalities** - set up different profiles (say "work" and "fun"),
+  each with its own personality, voice, and chat history.
 
 ## Install
 
@@ -39,7 +39,7 @@ See **install-readme.md** for the full, step-by-step guide. The short version:
 ## Architecture
 
 ```
-server.py            # merged FastAPI app (chat flow + TTS + avatar + settings + auth)
+server.py            # the FastAPI app (chat flow + TTS + avatar + settings + auth)
 config.yaml          # one config for everything
 tts/                 # TTS module (registry + backends + STT + voices)
 static/              # talk UI + admin UI + default avatar + idle video
