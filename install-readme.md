@@ -132,12 +132,8 @@ will ask you for it interactively.
 
 ### 2. Run the installer
 
-Open PowerShell in the project root and run:
-
-```
-Set-ExecutionPolicy -Scope Process Bypass
-.\install.ps1
-```
+Double-click install.bat (or run it from a command prompt). It launches the
+installer in a PowerShell window.
 
 The script is idempotent: you can re-run it and it will skip steps that are
 already done.
