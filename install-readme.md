@@ -223,3 +223,7 @@ Then open http://localhost:8900 (talk UI) and http://localhost:8900/admin
 - DITTO's upstream README installs it with conda, but this project installs it in
   a plain Python venv (matching the reference setup, which works fine). You do
   not need conda, Miniconda, or micromamba.
+- config.yaml ships with default credentials (Admin / Testing123, empty
+  api_token). install.ps1 writes a random api_token and your HF token into it,
+  so git shows it as modified after install. If you contribute back, freeze it
+  with: `git update-index --skip-worktree config.yaml`
