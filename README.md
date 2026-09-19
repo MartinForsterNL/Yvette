@@ -24,6 +24,18 @@ the personality that feels right. Make it yours.
 - **Separate personalities** - set up different profiles (say "work" and "fun"),
   each with its own personality, voice, and chat history.
 
+## Requirements
+
+- Windows 10 or 11
+- An NVIDIA GPU (CUDA-capable). Ampere or newer (RTX 30/40/50 series) is
+  recommended. 16 GB VRAM minimum, 24 GB recommended.
+- About 60 GB of free disk space
+
+The full software prerequisites (Python, CUDA, cuDNN, TensorRT) are listed in
+install-readme.md.
+
+---
+
 ## Install
 
 This repo ships the app code and an installer. The heavy model backends are
