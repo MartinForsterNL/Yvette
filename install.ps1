@@ -1,0 +1,201 @@
+# install.ps1 - Yvette Voice Avatar AI - backend installer
+# Runs on Windows PowerShell 5.1+. Idempotent: safe to re-run.
+$ErrorActionPreference = "Stop"
+
+$Root        = $PSScriptRoot
+$Engines     = Join-Path $Root "engines"
+$Servers     = Join-Path $Root "servers"
+$TensorRT    = Join-Path $Root "TensorRT\TensorRT-8.6.1.6"
+$TensorRTLib = Join-Path $TensorRT "lib"
+$TensorRTPy  = Join-Path $TensorRT "python"
+$Patches     = Join-Path $Root "patches"
+
+function Step($msg) { Write-Host "`n=== $msg ===" -ForegroundColor Cyan }
+function Ok($msg)   { Write-Host "  [ok] $msg" -ForegroundColor Green }
+function Warn($msg) { Write-Host "  [skip] $msg" -ForegroundColor Yellow }
+function Die($msg)  { Write-Host "ERROR: $msg" -ForegroundColor Red; exit 1 }
+
+New-Item -ItemType Directory -Force -Path $Engines | Out-Null
+
+# ---------------------------------------------------------------------------
+Step "Loading install-config.ps1"
+
+$ConfigFile = Join-Path $Root "install-config.ps1"
+if (Test-Path $ConfigFile) {
+    . $ConfigFile
+    Ok "loaded install-config.ps1"
+} else {
+    Warn "install-config.ps1 not found (it should ship with the repo). Using empty defaults."
+    $HF_TOKEN = ""
+    $SKIP_DITTO_CONVERT = $false
+    $HF_ENDPOINT = ""
+}
+
+if ($HF_ENDPOINT) { $env:HF_ENDPOINT = $HF_ENDPOINT; Ok "HF_ENDPOINT set" }
+
+# ---------------------------------------------------------------------------
+Step "Checking prerequisites"
+
+function HasCmd($cmd) { return [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
+
+if (-not (HasCmd "python")) { Die "Python not found. Install Python 3.10 and put it on PATH." }
+$pyVer = & python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+if ($pyVer -ne "3.10") { Die "Python 3.10 is required (found $pyVer). Install Python 3.10 - see install-readme.md Part 1." }
+Ok "python $pyVer"
+
+if (-not (HasCmd "git")) { Die "git not found. Install Git for Windows." }
+Ok "git"
+
+git lfs version *> $null
+if ($LASTEXITCODE -ne 0) { Die "git-lfs not enabled. Run: git lfs install" }
+Ok "git-lfs"
+
+if (-not (HasCmd "ffmpeg")) { Warn "ffmpeg not on PATH (needed for audio handling)" } else { Ok "ffmpeg" }
+
+if (-not (Test-Path $TensorRTLib)) {
+    Die "TensorRT not found at $TensorRTLib. Extract TensorRT-8.6.1.6 into the TensorRT folder (see install-readme.md Part 1)."
+}
+Ok "TensorRT lib: $TensorRTLib"
+
+# ---------------------------------------------------------------------------
+Step "DITTO (talking-head avatar)"
+
+$ditto = Join-Path $Engines "ditto"
+if (-not (Test-Path (Join-Path $ditto ".git"))) {
+    git clone https://github.com/justinjohn0306/ditto-talkinghead-windows.git $ditto
+} else { Warn "ditto repo already cloned" }
+
+$dVenv = Join-Path $ditto "venv"
+if (-not (Test-Path $dVenv)) { & python -m venv $dVenv }
+$dPy = Join-Path $dVenv "Scripts\python.exe"
+
+& $dPy -m pip install --upgrade pip | Out-Null
+& $dPy -m pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+& $dPy -m pip install numpy==2.0.1 opencv-python-headless==4.10.0.84 librosa==0.10.2.post1 soundfile==0.13.0 soxr==0.5.0.post1 numba==0.60.0
+& $dPy -m pip install cuda-python==12.6.2.post1 nvidia-cublas-cu12==12.6.4.1 nvidia-cuda-runtime-cu12==12.1.105 nvidia-cudnn-cu12==9.6.0.74
+& $dPy -m pip install onnx onnxruntime tifffile==2024.12.12 imageio==2.36.1 imageio-ffmpeg==0.5.1 pooch==1.8.2
+& $dPy -m pip install polygraphy colored "triton-windows<3.2"
+& $dPy -m pip install fastapi uvicorn python-multipart
+
+# TensorRT python bindings from the SDK (the only reliable source for 8.6.1.6), matching Python 3.10
+$trtWhl = Get-ChildItem -Path $TensorRTPy -Filter "tensorrt-8.6.1-cp310*.whl" -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($trtWhl) {
+    & $dPy -m pip install $trtWhl.FullName
+} else {
+    Warn "no tensorrt-8.6.1-cp310 wheel found in $TensorRTPy - install it manually if conversion fails"
+}
+Ok "ditto python deps installed"
+
+# Apply our 2-file patch
+$patch = Join-Path $Patches "ditto-windows.patch"
+if (Test-Path $patch) {
+    pushd $ditto
+    git apply --check $patch *> $null
+    if ($LASTEXITCODE -eq 0) {
+        git apply $patch
+        Ok "ditto patch applied"
+    } else {
+        Warn "ditto patch already applied or does not match this checkout"
+    }
+    popd
+}
+
+# Checkpoints (ONNX models + configs + plugin)
+$dittoCkpt = Join-Path $ditto "checkpoints"
+if (-not (Test-Path (Join-Path $dittoCkpt ".git"))) {
+    git clone https://huggingface.co/justinjohn-03/ditto-talkinghead-windows $dittoCkpt
+} else { Warn "ditto checkpoints already cloned" }
+
+# Build TensorRT engines for THIS GPU
+$dittoTrt = Join-Path $ditto "checkpoints\ditto_trt_custom"
+if ($SKIP_DITTO_CONVERT) {
+    Warn "DITTO conversion skipped (SKIP_DITTO_CONVERT = true)"
+} elseif (-not (Test-Path $dittoTrt)) {
+    $env:PATH = "$(Split-Path $dPy);$TensorRTLib;$env:PATH"
+    Step "DITTO - building TensorRT engines for this GPU (takes a while)"
+    pushd $ditto
+    & $dPy scripts\cvt_onnx_to_trt.py --onnx_dir checkpoints\ditto_onnx --trt_dir checkpoints\ditto_trt_custom
+    if ($LASTEXITCODE -ne 0) { Die "DITTO engine build failed" }
+    popd
+    Ok "DITTO engines built in $dittoTrt"
+} else { Warn "DITTO engines already built" }
+
+# Copy our wrapper server into the ditto dir
+Copy-Item (Join-Path $Servers "ditto_server.py") (Join-Path $ditto "ditto_server.py") -Force
+Ok "ditto_server.py placed"
+
+# ---------------------------------------------------------------------------
+Step "Breeze (TTS)"
+
+$breeze = Join-Path $Engines "breeze"
+if (-not (Test-Path (Join-Path $breeze ".git"))) {
+    git clone https://github.com/breezeblue-ai/breeze-tts.git $breeze
+} else { Warn "breeze repo already cloned" }
+
+$bVenv = Join-Path $breeze "venv"
+if (-not (Test-Path $bVenv)) { & python -m venv $bVenv }
+$bPy = Join-Path $bVenv "Scripts\python.exe"
+
+& $bPy -m pip install --upgrade pip | Out-Null
+& $bPy -m pip install torch==2.9.1 torchaudio==2.9.1 --index-url https://download.pytorch.org/whl/cu128
+& $bPy -m pip install qwen-tts==0.1.1 transformers==4.57.3 huggingface_hub soundfile fastapi uvicorn python-multipart numpy
+Ok "breeze python deps installed"
+
+$breezeModel = Join-Path $breeze "breeze-tts-2"
+if (-not (Test-Path $breezeModel)) {
+    Step "Breeze - downloading voice checkpoint (gated, needs HF token)"
+    if (-not $HF_TOKEN) {
+        $HF_TOKEN = Read-Host "Paste your Hugging Face token (https://huggingface.co/settings/tokens)"
+    }
+    & $bPy -c "from huggingface_hub import snapshot_download; snapshot_download('BreezeBlue/breeze-tts-2', token='$HF_TOKEN', local_dir='$($breezeModel -replace '\\','/')')"
+    if ($LASTEXITCODE -ne 0) { Die "Breeze model download failed (bad token or terms not accepted)" }
+    Ok "breeze model downloaded"
+} else { Warn "breeze model already present" }
+
+# ---------------------------------------------------------------------------
+Step "OmniVoice (TTS)"
+
+$omni = Join-Path $Engines "omnivoice"
+$oVenv = Join-Path $omni "venv"
+if (-not (Test-Path $oVenv)) { New-Item -ItemType Directory -Force -Path $omni | Out-Null; & python -m venv $oVenv }
+$oPy = Join-Path $oVenv "Scripts\python.exe"
+
+& $oPy -m pip install --upgrade pip | Out-Null
+& $oPy -m pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+& $oPy -m pip install omnivoice==0.2.1 soundfile numpy
+Ok "omnivoice python deps installed (model downloads on first run)"
+
+Copy-Item (Join-Path $Servers "omnivoice_server.py") (Join-Path $omni "omnivoice_server.py") -Force
+Ok "omnivoice_server.py placed"
+
+# ---------------------------------------------------------------------------
+Step "LuxTTS (TTS)"
+
+$lux = Join-Path $Engines "lux"
+if (-not (Test-Path (Join-Path $lux ".git"))) {
+    git clone https://github.com/ysharma3501/LuxTTS.git $lux
+} else { Warn "lux repo already cloned" }
+
+$lVenv = Join-Path $lux "venv"
+if (-not (Test-Path $lVenv)) { & python -m venv $lVenv }
+$lPy = Join-Path $lVenv "Scripts\python.exe"
+
+& $lPy -m pip install --upgrade pip | Out-Null
+& $lPy -m pip install torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+& $lPy -m pip install -r (Join-Path $lux "requirements.txt")
+Ok "lux python deps installed (model downloads on first run)"
+
+Copy-Item (Join-Path $Servers "lux_server.py") (Join-Path $lux "lux_server.py") -Force
+Ok "lux_server.py placed"
+
+# ---------------------------------------------------------------------------
+Step "Done"
+
+Write-Host ""
+Write-Host "Backends installed under $Engines" -ForegroundColor Green
+Write-Host "  ditto/      avatar (engines built in checkpoints/ditto_trt_custom)"
+Write-Host "  breeze/     TTS"
+Write-Host "  omnivoice/  TTS"
+Write-Host "  lux/        TTS"
+Write-Host ""
+Write-Host "The main voice-ai app is added separately (see the project README)." -ForegroundColor Yellow
