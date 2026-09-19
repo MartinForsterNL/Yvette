@@ -4,6 +4,10 @@ A voice assistant with a face. You talk to it (or type), and it answers in
 speech while an animated avatar on screen moves its lips in sync. It runs
 entirely on your own machine.
 
+Whether you want a sharp assistant to get things done or an AI companion
+to keep you company, you can have it all - pick the voice, the face, and
+the personality that feels right. Make it yours.
+
 ## What it does
 
 - **Talk to it** - hold the button and speak, or just type. It replies with a
