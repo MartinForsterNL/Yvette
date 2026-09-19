@@ -1,0 +1,1924 @@
+// --- session expiry: auto-redirect to login on any 401 ---
+(function () {
+  var _fetch = window.fetch;
+  window.fetch = function () {
+    return _fetch.apply(this, arguments).then(function (resp) {
+      if (resp && resp.status === 401) {
+        var next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = "/login?next=" + next;
+        throw new Error("session expired");
+      }
+      return resp;
+    });
+  };
+})();
+
+// --- tab switching ---
+document.querySelectorAll(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    const panel = document.getElementById("panel-" + btn.dataset.tab);
+    if (panel) panel.classList.add("active");
+    if (typeof onTabShow === "function") onTabShow(btn.dataset.tab);
+  });
+});
+
+// Reload a tab's data when it becomes visible so nothing is stale.
+function onTabShow(tab) {
+  const loaders = {
+    stt: () => loadSTTModels().then(() => { loadSTTSettings(); loadSTTStatus(); }),
+    tts: () => { refreshModels(); loadEngineSettings(); loadTtsGeneral(); loadGeneralSettings(); },
+    avatars: () => { loadAvatarDefaults(); loadAvatars(); loadAvatarGeneral(); loadDittoStatus(); },
+    personalities: () => { loadPersDefault(); loadPersonalities(); },
+    llms: () => { loadLlmDefaults(); loadLlmModels(); },
+    general: () => { loadMemorySettings(); loadServerSettings(); loadAuthSettings(); loadToolcalling(); },
+    status: () => { loadStatus(); loadLogs(); loadLogSettings(); },
+    profiles: () => loadProfDropdowns().then(() => loadTalkProfiles()),
+  };
+  const fn = loaders[tab];
+  if (fn) fn();
+}
+
+// TTS Server Web UI
+const $ = (id) => document.getElementById(id);
+
+let models = [];
+let voices = [];
+let refAudioFile = null;   // File object from upload or recording
+let refAudioUrl = null;    // object URL for preview
+let editingId = null;      // profile id being edited (null = create mode)
+let recChunks = [];
+let recTimer = null;
+let recSeconds = 0;
+
+// ---------- health / models ----------
+async function refreshHealth() {
+  try {
+    const r = await fetch("/api/health");
+    const d = await r.json();
+    const parts = d.models.map(m =>
+      `${m.name}:${m.loaded ? "loaded" : (m.available ? "ready" : "off")}`);
+    $("health").textContent = parts.join("  ·  ");
+    $("health").className = "health " + (d.models.some(m => m.loaded) ? "ok" : "");
+    for (const m of (d.models || [])) {
+      const cur = models.find(x => x.name === m.name);
+      if (cur) { cur.loaded = m.loaded; cur.available = m.available; }
+    }
+    renderModelsList();
+  } catch (e) {
+    $("health").textContent = "server unreachable";
+    $("health").className = "health err";
+  }
+}
+
+async function refreshModels() {
+  const r = await fetch("/api/tts/status");
+  const d = await r.json();
+  models = d.models;
+  const sel = $("model");
+  const cur = sel.value;
+  sel.innerHTML = "";
+  for (const m of models) {
+    const opt = document.createElement("option");
+    opt.value = m.name;
+    let label = m.name;
+    if (m.name === "breeze" && m.active_engine) label += ` [${m.active_engine}]`;
+    if (!m.available) label += " (unavailable)";
+    opt.textContent = label;
+    sel.appendChild(opt);
+  }
+  if (cur && models.some(m => m.name === cur)) sel.value = cur;
+  onModelChange();
+  renderModelsList();
+}
+
+function renderModelsList() {
+  const box = $("models-list");
+  if (!box) return;
+  box.innerHTML = "";
+  for (const m of models) {
+    const row = document.createElement("div");
+    row.className = "model-row";
+    const name = document.createElement("span");
+    name.className = "model-name";
+    name.textContent = m.name;
+    const st = document.createElement("span");
+    st.className = "model-status " + (m.loaded ? "on" : "off");
+    st.textContent = m.loaded ? "loaded" : (m.available ? "idle" : "unavailable");
+    const loadBtn = document.createElement("button");
+    loadBtn.className = "secondary";
+    loadBtn.textContent = "Load";
+    loadBtn.disabled = m.loaded || !m.available;
+    loadBtn.onclick = () => loadModel(m.name);
+    const btn = document.createElement("button");
+    btn.className = "secondary";
+    btn.textContent = "Unload";
+    btn.disabled = !m.loaded;
+    btn.onclick = () => unloadModel(m.name);
+    row.appendChild(name);
+    row.appendChild(st);
+    row.appendChild(loadBtn);
+    row.appendChild(btn);
+    box.appendChild(row);
+  }
+}
+
+async function loadModel(name) {
+  setStatus("gen-status", "Loading " + name + "...", "");
+  const fd = new FormData();
+  fd.append("model", name);
+  try {
+    const r = await fetch("/api/models/load", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "failed");
+    await refreshModels();
+    await refreshHealth();
+    setStatus("gen-status", name + " loaded", "ok");
+  } catch (e) {
+    setStatus("gen-status", "Load failed: " + e.message, "err");
+  }
+}
+
+async function unloadModel(name) {
+  setStatus("gen-status", "Unloading " + name + "...", "");
+  const fd = new FormData();
+  fd.append("model", name);
+  try {
+    const r = await fetch("/api/models/unload", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "failed");
+    await refreshModels();
+    await refreshHealth();
+    setStatus("gen-status", name + " unloaded", "ok");
+  } catch (e) {
+    setStatus("gen-status", "Unload failed: " + e.message, "err");
+  }
+}
+
+function onModelChange() {
+  const model = $("model").value;
+  const isBreeze = (model === "breeze" || model === "omnivoice");
+  $("breeze-opts").style.display = isBreeze ? "" : "none";
+  $("instr-field").style.display = isBreeze ? "" : "none";
+  refreshVoices(model);
+}
+
+// ---------- voices ----------
+async function refreshVoices(model) {
+  const r = await fetch("/api/voices");
+  const d = await r.json();
+  voices = d.voices;
+  const sel = $("voice");
+  const instr = $("instruction");
+  const cur = sel.value;
+  const curInstr = instr.value;
+  sel.innerHTML = "";
+  instr.innerHTML = "";
+  if (model === "kokoro") {
+    const m = models.find(x => x.name === "kokoro");
+    for (const v of (m ? m.voices : [])) {
+      const opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.name;
+      sel.appendChild(opt);
+    }
+  } else {
+    // breeze: clone profiles -> voice dropdown, design profiles -> instruction dropdown
+    const clones = voices.filter(v => (v.model === "breeze" || v.model === "omnivoice" || !v.model) && v.kind === "clone");
+    const designs = voices.filter(v => (v.model === "breeze" || v.model === "omnivoice" || !v.model) && v.kind === "design");
+
+    const optNone = document.createElement("option");
+    optNone.value = "";
+    optNone.textContent = "(no clone)";
+    sel.appendChild(optNone);
+    for (const v of clones) {
+      const opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.name;
+      sel.appendChild(opt);
+    }
+
+    const optNone2 = document.createElement("option");
+    optNone2.value = "";
+    optNone2.textContent = "(no instruction)";
+    instr.appendChild(optNone2);
+    for (const v of designs) {
+      const opt = document.createElement("option");
+      opt.value = v.id;
+      opt.textContent = v.name;
+      instr.appendChild(opt);
+    }
+  }
+  if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+  if (curInstr && [...instr.options].some(o => o.value === curInstr)) instr.value = curInstr;
+  renderProfiles();
+}
+
+function renderProfileList(box, list, emptyMsg) {
+  box.innerHTML = "";
+  if (list.length === 0) {
+    box.innerHTML = '<p class="hint">' + emptyMsg + '</p>';
+    return;
+  }
+  for (const v of list) {
+    const row = document.createElement("div");
+    row.className = "profile";
+    const refNote = v.kind === "clone"
+      ? (v.ref_audio_exists ? "ref audio ok" : "ref audio MISSING")
+      : `“${(v.instruction || "").slice(0, 60)}${(v.instruction || "").length > 60 ? "…" : ""}”`;
+    row.innerHTML = `
+      <div class="profile-info">
+        <strong>${escapeHtml(v.name)}</strong>
+        <span class="tag">${v.kind}</span>
+        ${(v.engines || [v.model || "breeze"]).map(e => `<span class="tag">${e}</span>`).join("")}
+        <div class="hint">${escapeHtml(refNote)}</div>
+        ${v.transcript ? `<div class="hint transcript">“${escapeHtml(v.transcript.slice(0, 120))}${v.transcript.length > 120 ? "…" : ""}”</div>` : ""}
+      </div>
+      <div class="profile-actions">
+        <button class="secondary test-btn" data-id="${v.id}">Test</button>
+        <button class="secondary edit-btn" data-id="${v.id}">Edit</button>
+        <button class="danger del-btn" data-id="${v.id}">Delete</button>
+      </div>`;
+    box.appendChild(row);
+  }
+  box.querySelectorAll(".test-btn").forEach(b => b.onclick = () => testProfile(b.dataset.id));
+  box.querySelectorAll(".edit-btn").forEach(b => b.onclick = () => editProfile(b.dataset.id));
+  box.querySelectorAll(".del-btn").forEach(b => b.onclick = () => deleteProfile(b.dataset.id));
+}
+
+function renderProfiles() {
+  const clones = voices.filter(v => v.kind === "clone");
+  const designs = voices.filter(v => v.kind === "design");
+  renderProfileList($("profiles-clones"), clones, "No clones yet. Clone a voice above.");
+  renderProfileList($("profiles-designs"), designs, "No designs yet. Design a voice above.");
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ---------- TTS ----------
+let chunkQueue = [];
+
+$("generate").onclick = async () => {
+  const text = $("text").value;
+  if (!text.trim()) { setStatus("gen-status", "enter some text", "err"); return; }
+  const model = $("model").value;
+  const voice = $("voice").value;
+  const fmt = $("format").value;
+  const rtype = $("return-type").value;
+  if (model === "breeze" && !voice && !$("instruction").value && !$("instruction-text").value.trim()) {
+    setStatus("gen-status", "select a clone voice, an instruction, or both", "err");
+    return;
+  }
+  const fd = new FormData();
+  fd.append("text", text);
+  fd.append("model", model);
+  if (model === "breeze" || model === "omnivoice") {
+    const manualInstr = $("instruction-text").value.trim();
+    fd.append("voice_id", voice);
+    if (manualInstr) {
+      fd.append("instruction", manualInstr);
+    } else {
+      fd.append("instruction_id", $("instruction").value);
+    }
+    const cfg = $("cfg").value; if (cfg) fd.append("cfg_scale", cfg);
+    const seed = $("seed").value; if (seed) fd.append("seed", seed);
+  } else {
+    fd.append("voice", voice);
+  }
+  fd.append("output_format", fmt);
+  fd.append("return_type", rtype);
+
+  $("result").style.display = "none";
+  $("chunk-result").style.display = "none";
+
+  if (rtype === "chunked") {
+    await runChunked(fd);
+  } else {
+    await runFull(fd);
+  }
+};
+
+async function runFull(fd) {
+  setStatus("gen-status", "generating…", "");
+  $("generate").disabled = true;
+  const t0 = Date.now();
+  try {
+    const r = await fetch("/api/tts", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    $("player").src = d.audio_url;
+    $("download").href = d.audio_url;
+    $("result").style.display = "";
+    $("result-meta").textContent =
+      `${d.model} · ${d.voice} · ${d.duration_sec}s · ${d.chunks || 1} chunks · ${((Date.now() - t0) / 1000).toFixed(1)}s gen`;
+    setStatus("gen-status", "done", "ok");
+    $("player").play().catch(() => {});
+  } catch (e) {
+    setStatus("gen-status", "error: " + e.message, "err");
+  } finally {
+    $("generate").disabled = false;
+  }
+}
+
+async function runChunked(fd) {
+  setStatus("gen-status", "starting…", "");
+  $("generate").disabled = true;
+  $("chunk-result").style.display = "";
+  $("chunk-list").innerHTML = "";
+  chunkQueue = [];
+  try {
+    const r = await fetch("/api/tts", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    const rid = d.request_id;
+    setStatus("gen-status", `streaming 0/${d.total_chunks} chunks…`, "");
+    let seen = 0;
+    const poll = async () => {
+      try {
+        const sr = await fetch("/api/tts/status/" + rid);
+        const st = await sr.json();
+        if (!sr.ok) throw new Error(st.detail || st.error || JSON.stringify(st));
+        const chunks = st.chunks || [];
+        for (let i = seen; i < chunks.length; i++) addChunk(chunks[i]);
+        seen = chunks.length;
+        $("chunk-progress").textContent =
+          `${st.status === "done" ? "done" : "streaming"} · ${chunks.length}/${st.total_chunks} chunks`;
+        if (st.status === "processing") {
+          setTimeout(poll, 800);
+        } else if (st.status === "done") {
+          setStatus("gen-status", `done · ${chunks.length} chunks`, "ok");
+          $("generate").disabled = false;
+        } else {
+          setStatus("gen-status", "error: " + (st.error || "unknown"), "err");
+          $("generate").disabled = false;
+        }
+      } catch (e) {
+        setStatus("gen-status", "error: " + e.message, "err");
+        $("generate").disabled = false;
+      }
+    };
+    poll();
+  } catch (e) {
+    setStatus("gen-status", "error: " + e.message, "err");
+    $("generate").disabled = false;
+  }
+}
+
+function addChunk(chunk) {
+  const row = document.createElement("div");
+  row.className = "chunk";
+  row.innerHTML = `<div class="hint">${escapeHtml(chunk.text)}</div>`;
+  const a = document.createElement("audio");
+  a.controls = true;
+  a.preload = "auto";
+  a.src = chunk.audio_url;
+  row.appendChild(a);
+  $("chunk-list").appendChild(row);
+  chunkQueue.push(a);
+  a.addEventListener("ended", () => {
+    const idx = chunkQueue.indexOf(a);
+    if (idx >= 0 && idx + 1 < chunkQueue.length) chunkQueue[idx + 1].play().catch(() => {});
+  });
+  if (chunkQueue.length === 1) a.play().catch(() => {});
+}
+
+function testProfile(id) {
+  const v = voices.find(x => x.id === id);
+  if (!v) return;
+  $("model").value = v.model || "breeze";
+  onModelChange();
+  // select the profile in the right dropdown (clone -> voice, design -> instruction)
+  if (v.kind === "design") {
+    const instr = $("instruction");
+    [...instr.options].forEach(o => { if (o.value === id) instr.value = id; });
+  } else {
+    const sel = $("voice");
+    [...sel.options].forEach(o => { if (o.value === id) sel.value = id; });
+  }
+  if (!$("text").value.trim()) $("text").value = "This is a test of the voice.";
+  $("generate").click();
+}
+
+async function deleteProfile(id) {
+  if (!confirm("Delete this voice profile?")) return;
+  await fetch("/api/voices/" + id, { method: "DELETE" });
+  refreshVoices($("model").value);
+}
+
+// ---------- edit profile ----------
+function editProfile(id) {
+  const v = voices.find(x => x.id === id);
+  if (!v) return;
+  editingId = id;
+  if (v.kind === "design") {
+    $("design-name").value = v.name || "";
+    $("design-desc").value = v.instruction || "";
+    setEngines("design-engines", v.engines || [v.model || "breeze"]);
+    $("save-design").textContent = "Update profile";
+    $("design-cancel").style.display = "";
+    $("design-card").scrollIntoView({ behavior: "smooth" });
+  } else {
+    $("clone-name").value = v.name || "";
+    $("transcript").value = v.transcript || "";
+    setEngines("clone-engines", v.engines || [v.model || "breeze"]);
+    $("save-clone").textContent = "Update profile";
+    $("clone-cancel").style.display = "";
+    $("clone-card").scrollIntoView({ behavior: "smooth" });
+  }
+}
+
+function resetCloneForm() {
+  editingId = null;
+  $("clone-name").value = "";
+  $("transcript").value = "";
+  setRefAudio(null, null);
+  $("save-clone").textContent = "Save voice profile";
+  $("clone-cancel").style.display = "none";
+  setEngines("clone-engines", ["breeze"]);
+}
+
+function resetDesignForm() {
+  editingId = null;
+  $("design-name").value = "";
+  $("design-desc").value = "";
+  $("save-design").textContent = "Save voice profile";
+  $("design-cancel").style.display = "none";
+  setEngines("design-engines", ["breeze"]);
+}
+
+$("clone-cancel").onclick = resetCloneForm;
+$("design-cancel").onclick = resetDesignForm;
+
+// ---------- reference audio (upload / record) ----------
+$("upload-file").onchange = (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  setRefAudio(f, URL.createObjectURL(f));
+};
+
+function setRefAudio(file, url) {
+  refAudioFile = file;
+  if (refAudioUrl) URL.revokeObjectURL(refAudioUrl);
+  refAudioUrl = url;
+  if (file) {
+    $("ref-status").textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
+    $("ref-status").className = "status ok";
+  } else {
+    $("ref-status").textContent = "none";
+    $("ref-status").className = "status";
+  }
+}
+
+// ---------- STT ----------
+$("transcribe-btn").onclick = async () => {
+  if (!refAudioFile) { setStatus("clone-status", "record or upload reference audio first", "err"); return; }
+  setStatus("clone-status", "transcribing with Whisper…", "");
+  const fd = new FormData();
+  fd.append("audio", refAudioFile);
+  try {
+    const r = await fetch("/api/stt", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    $("transcript").value = d.text;
+    setStatus("clone-status", `transcribed (${d.language}, ${d.duration_sec}s)`, "ok");
+  } catch (e) {
+    setStatus("clone-status", "error: " + e.message, "err");
+  }
+};
+
+// ---------- save clone ----------
+$("save-clone").onclick = async () => {
+  const name = $("clone-name").value.trim();
+  if (!name) { setStatus("clone-status", "give the profile a name", "err"); return; }
+  const transcript = $("transcript").value.trim();
+  if (!transcript) { setStatus("clone-status", "transcript required (run Whisper or type it)", "err"); return; }
+
+  if (editingId) {
+    setStatus("clone-status", "updating…", "");
+    const fd = new FormData();
+    fd.append("name", name);
+    fd.append("transcript", transcript);
+    fd.append("engines", getEngines("clone-engines").join(","));
+    try {
+      const r = await fetch("/api/voices/" + editingId, { method: "PUT", body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+      setStatus("clone-status", "updated", "ok");
+      resetCloneForm();
+      refreshVoices($("model").value);
+    } catch (e) {
+      setStatus("clone-status", "error: " + e.message, "err");
+    }
+    return;
+  }
+
+  if (!refAudioFile) { setStatus("clone-status", "record or upload reference audio first", "err"); return; }
+  setStatus("clone-status", "saving…", "");
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("kind", "clone");
+  fd.append("model", "breeze");
+  fd.append("transcript", transcript);
+  fd.append("ref_audio", refAudioFile);
+  fd.append("auto_transcribe", "false");
+  fd.append("engines", getEngines("clone-engines").join(","));
+  try {
+    const r = await fetch("/api/voices", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    setStatus("clone-status", "saved", "ok");
+    resetCloneForm();
+    refreshVoices($("model").value);
+  } catch (e) {
+    setStatus("clone-status", "error: " + e.message, "err");
+  }
+};
+
+// ---------- save design ----------
+$("save-design").onclick = async () => {
+  const name = $("design-name").value.trim();
+  const desc = $("design-desc").value.trim();
+  if (!name) { setStatus("design-status", "give the profile a name", "err"); return; }
+  if (!desc) { setStatus("design-status", "description required", "err"); return; }
+  setStatus("design-status", editingId ? "updating…" : "saving…", "");
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("instruction", desc);
+  fd.append("engines", getEngines("design-engines").join(","));
+  if (!editingId) { fd.append("kind", "design"); fd.append("model", "breeze"); }
+  try {
+    const url = editingId ? "/api/voices/" + editingId : "/api/voices";
+    const method = editingId ? "PUT" : "POST";
+    const r = await fetch(url, { method, body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    setStatus("design-status", editingId ? "updated" : "saved", "ok");
+    resetDesignForm();
+    refreshVoices($("model").value);
+  } catch (e) {
+    setStatus("design-status", "error: " + e.message, "err");
+  }
+};
+
+function setStatus(id, msg, cls) {
+  const el = $(id);
+  el.textContent = msg;
+  el.className = "status " + (cls || "");
+}
+
+// ---------- init ----------
+$("model").onchange = onModelChange;
+refreshHealth();
+refreshModels();
+setInterval(refreshHealth, 10000);
+
+
+// --- STT tab ---
+function sttShow(view) {
+  document.querySelectorAll("[data-stt-view]").forEach((b) => b.classList.toggle("active", b.dataset.sttView === view));
+  document.getElementById("stt-settings").classList.toggle("active", view === "settings");
+  document.getElementById("stt-download").classList.toggle("active", view === "download");
+}
+document.querySelectorAll("[data-stt-view]").forEach((b) => b.addEventListener("click", () => sttShow(b.dataset.sttView)));
+
+async function loadSTTSettings() {
+  try {
+    const r = await fetch("/api/stt/settings");
+    const d = await r.json();
+    const set = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined && v !== null) el.value = v; };
+    set("stt-model", d.model);
+    set("stt-language", d.language || "");
+    set("stt-device", d.device);
+    set("stt-compute", d.compute_type);
+    set("stt-beam", d.beam_size);
+    const en = document.getElementById("stt-enabled");
+    if (en) en.checked = !!d.enabled;
+  } catch (e) {}
+}
+
+async function loadSTTModels() {
+  try {
+    const r = await fetch("/api/stt/models");
+    const d = await r.json();
+    const models = d.models || [];
+    // settings dropdown: installed models only
+    const sel = document.getElementById("stt-model");
+    const cur = sel.value;
+    sel.innerHTML = "";
+    for (const m of models) {
+      if (!m.installed) continue;
+      const opt = document.createElement("option");
+      opt.value = m.id; opt.textContent = m.id;
+      sel.appendChild(opt);
+    }
+    if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+    // download list
+    const box = document.getElementById("stt-models");
+    box.innerHTML = "";
+    for (const m of models) {
+      const row = document.createElement("div");
+      row.className = "profile";
+      const info = document.createElement("div");
+      info.className = "profile-info";
+      const name = document.createElement("strong");
+      name.textContent = m.id;
+      const repo = document.createElement("span");
+      repo.className = "hint";
+      repo.textContent = (m.installed ? "installed" : "not installed") + (m.current ? " · current" : "");
+      info.appendChild(name); info.appendChild(repo);
+      const actions = document.createElement("div");
+      actions.className = "profile-actions";
+      if (m.installed) {
+        const del = document.createElement("button");
+        del.className = "danger"; del.textContent = "Delete";
+        del.onclick = async () => {
+          if (!confirm("Delete model " + m.id + "?")) return;
+          await fetch("/api/stt/delete", { method: "POST", body: new URLSearchParams({model: m.id}) });
+          loadSTTModels(); loadSTTSettings();
+        };
+        actions.appendChild(del);
+      } else {
+        const dl = document.createElement("button");
+        dl.className = "secondary"; dl.textContent = "Download";
+        dl.onclick = async () => {
+          dl.disabled = true; dl.textContent = "Downloading...";
+          await fetch("/api/stt/download", { method: "POST", body: new URLSearchParams({model: m.id}) });
+        };
+        actions.appendChild(dl);
+      }
+      row.appendChild(info); row.appendChild(actions);
+      box.appendChild(row);
+    }
+  } catch (e) {}
+}
+
+document.getElementById("stt-save").onclick = async () => {
+  const fd = new FormData();
+  fd.append("model", document.getElementById("stt-model").value);
+  fd.append("language", document.getElementById("stt-language").value);
+  fd.append("device", document.getElementById("stt-device").value);
+  fd.append("compute_type", document.getElementById("stt-compute").value);
+  fd.append("beam_size", document.getElementById("stt-beam").value);
+  fd.append("enabled", document.getElementById("stt-enabled").checked ? "1" : "0");
+  const st = document.getElementById("stt-status");
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/stt/settings", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+const STT_LANGS = ["af","Afrikaans","am","Amharic","ar","Arabic","as","Assamese","az","Azerbaijani","ba","Bashkir","be","Belarusian","bg","Bulgarian","bn","Bengali","bo","Tibetan","br","Breton","bs","Bosnian","ca","Catalan","cs","Czech","cy","Welsh","da","Danish","de","German","el","Greek","en","English","es","Spanish","et","Estonian","eu","Basque","fa","Persian","fi","Finnish","fo","Faroese","fr","French","gl","Galician","gu","Gujarati","ha","Hausa","haw","Hawaiian","he","Hebrew","hi","Hindi","hr","Croatian","ht","Haitian Creole","hu","Hungarian","hy","Armenian","id","Indonesian","is","Icelandic","it","Italian","ja","Japanese","jw","Javanese","ka","Georgian","kk","Kazakh","km","Khmer","kn","Kannada","ko","Korean","la","Latin","lb","Luxembourgish","ln","Lingala","lo","Lao","lt","Lithuanian","lv","Latvian","mg","Malagasy","mi","Maori","mk","Macedonian","ml","Malayalam","mn","Mongolian","mr","Marathi","ms","Malay","mt","Maltese","my","Burmese","ne","Nepali","nl","Dutch","nn","Norwegian Nynorsk","no","Norwegian","oc","Occitan","pa","Punjabi","pl","Polish","ps","Pashto","pt","Portuguese","ro","Romanian","ru","Russian","sa","Sanskrit","sd","Sindhi","si","Sinhala","sk","Slovak","sl","Slovenian","sn","Shona","so","Somali","sq","Albanian","sr","Serbian","su","Sundanese","sv","Swedish","sw","Swahili","ta","Tamil","te","Telugu","tg","Tajik","th","Thai","tk","Turkmen","tl","Tagalog","tr","Turkish","tt","Tatar","uk","Ukrainian","ur","Urdu","uz","Uzbek","vi","Vietnamese","yi","Yiddish","yo","Yoruba","zh","Chinese"];
+
+function populateLanguages() {
+  const sel = document.getElementById("stt-language");
+  if (!sel) return;
+  const opt = document.createElement("option");
+  opt.value = ""; opt.textContent = "auto-detect";
+  sel.appendChild(opt);
+  for (let i = 0; i < STT_LANGS.length; i += 2) {
+    const o = document.createElement("option");
+    o.value = STT_LANGS[i]; o.textContent = STT_LANGS[i + 1];
+    sel.appendChild(o);
+  }
+}
+
+document.getElementById("stt-reset").onclick = async () => {
+  const sel = document.getElementById("stt-model");
+  if ([...sel.options].some(o => o.value === "large-v3-turbo")) sel.value = "large-v3-turbo";
+  document.getElementById("stt-language").value = "";
+  document.getElementById("stt-device").value = "cuda";
+  document.getElementById("stt-compute").value = "float16";
+  document.getElementById("stt-beam").value = 5;
+  const fd = new FormData();
+  fd.append("model", sel.value);
+  fd.append("language", "");
+  fd.append("device", "cuda");
+  fd.append("compute_type", "float16");
+  fd.append("beam_size", "5");
+  const st = document.getElementById("stt-status");
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/stt/settings", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Reset to defaults" : "Reset failed";
+    loadSTTSettings(); loadSTTModels();
+  } catch (e) { st.textContent = "Reset failed"; }
+};
+
+async function loadSTTStatus() {
+  try {
+    const d = await (await fetch("/api/stt/status")).json();
+    renderSTTStatus(d);
+  } catch (e) {}
+}
+
+function renderSTTStatus(d) {
+  const st = document.getElementById("stt-model-status");
+  if (d.loaded) {
+    st.textContent = "loaded (" + d.model + ")";
+    st.className = "status ok";
+  } else {
+    st.textContent = "not loaded";
+    st.className = "status";
+  }
+}
+
+document.getElementById("stt-load").onclick = async () => {
+  try {
+    await fetch("/api/stt/load", { method: "POST" });
+    setTimeout(loadSTTStatus, 2000);
+  } catch (e) {}
+};
+
+document.getElementById("stt-unload").onclick = async () => {
+  try {
+    await fetch("/api/stt/unload", { method: "POST" });
+    loadSTTStatus();
+  } catch (e) {}
+};
+
+populateLanguages();
+loadSTTModels().then(() => { loadSTTSettings(); loadSTTStatus(); });
+setInterval(loadSTTModels, 15000);
+
+// --- TTS side menu ---
+function ttsShow(view) {
+  document.querySelectorAll("[data-tts-view]").forEach((b) => b.classList.toggle("active", b.dataset.ttsView === view));
+  ["models", "test", "cloning", "design", "engines", "general"].forEach((v) => {
+    const el = document.getElementById("tts-" + v);
+    if (el) el.classList.toggle("active", v === view);
+  });
+}
+document.querySelectorAll("[data-tts-view]").forEach((b) => b.addEventListener("click", () => ttsShow(b.dataset.ttsView)));
+
+// --- engine tag helpers ---
+function getEngines(containerId) {
+  const box = document.getElementById(containerId);
+  if (!box) return [];
+  return [...box.querySelectorAll("input[type=checkbox]:checked")].map(x => x.value);
+}
+function setEngines(containerId, engines) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+  const list = (engines && engines.length) ? engines : ["breeze"];
+  box.querySelectorAll("input[type=checkbox]").forEach(c => { c.checked = list.includes(c.value); });
+}
+
+// --- engine settings ---
+async function loadEngineSettings() {
+  try {
+    const r = await fetch("/api/engines/settings");
+    const d = await r.json();
+    const box = document.getElementById("engine-settings");
+    if (!box) return;
+    box.innerHTML = "";
+    for (const eng of (d.engines || [])) {
+      const card = document.createElement("section");
+      card.className = "card";
+      const h = document.createElement("h2");
+      h.textContent = eng.name;
+      card.appendChild(h);
+      for (const s of eng.settings) {
+        const field = document.createElement("div");
+        field.className = "field";
+        const label = document.createElement("label");
+        label.textContent = s.label;
+        const hint = document.createElement("span");
+        hint.className = "hint";
+        hint.textContent = " - " + s.desc;
+        label.appendChild(hint);
+        field.appendChild(label);
+        let input;
+        if (s.type === "bool") {
+          input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = !!s.value;
+        } else if (s.type === "select") {
+          input = document.createElement("select");
+          for (const o of (s.options || [])) {
+            const opt = document.createElement("option");
+            opt.value = o; opt.textContent = o;
+            input.appendChild(opt);
+          }
+          input.value = (s.value !== null && s.value !== undefined) ? s.value : (s.options ? s.options[0] : "");
+        } else {
+          input = document.createElement("input");
+          input.type = (s.type === "int" || s.type === "float") ? "number" : "text";
+          if (s.min !== undefined) input.min = s.min;
+          if (s.max !== undefined) input.max = s.max;
+          if (s.type === "float") input.step = "0.1";
+          input.value = (s.value !== null && s.value !== undefined) ? s.value : "";
+        }
+        input.dataset.engine = eng.name;
+        input.dataset.key = s.key;
+        input.dataset.type = s.type;
+        field.appendChild(input);
+        card.appendChild(field);
+      }
+      box.appendChild(card);
+    }
+  } catch (e) {}
+}
+
+document.getElementById("engines-save").onclick = async () => {
+  const updates = {};
+  document.querySelectorAll("#engine-settings [data-key]").forEach(el => {
+    const eng = el.dataset.engine, key = el.dataset.key, t = el.dataset.type;
+    updates[eng] = updates[eng] || {};
+    if (el.type === "checkbox") updates[eng][key] = el.checked;
+    else if (t === "int") updates[eng][key] = parseInt(el.value, 10);
+    else if (t === "float") updates[eng][key] = parseFloat(el.value);
+    else updates[eng][key] = el.value;
+  });
+  const fd = new FormData();
+  fd.append("data", JSON.stringify(updates));
+  const st = document.getElementById("engines-status");
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/engines/settings", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+loadEngineSettings();
+
+// --- general settings ---
+async function loadGeneralSettings() {
+  try {
+    const r = await fetch("/api/general");
+    const d = await r.json();
+    const el = document.getElementById("unload-idle");
+    if (el) el.value = d.unload_idle_minutes;
+    const uo = document.getElementById("unload-others");
+    if (uo) uo.checked = !!d.unload_others_before_load;
+  } catch (e) {}
+}
+
+document.getElementById("general-save").onclick = async () => {
+  const fd = new FormData();
+  fd.append("unload_idle_minutes", document.getElementById("unload-idle").value);
+  fd.append("unload_others_before_load", document.getElementById("unload-others").checked ? "1" : "0");
+  const st = document.getElementById("general-status");
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/general", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+loadGeneralSettings();
+
+// --- Avatars tab ---
+let editingAvatarId = null;
+
+function avatarShow(view) {
+  document.querySelectorAll("[data-avatar-view]").forEach((b) => b.classList.toggle("active", b.dataset.avatarView === view));
+  document.getElementById("avatar-defaults").classList.toggle("active", view === "defaults");
+  document.getElementById("avatar-list").classList.toggle("active", view === "avatars");
+  document.getElementById("avatar-general").classList.toggle("active", view === "general");
+}
+document.querySelectorAll("[data-avatar-view]").forEach((b) => b.addEventListener("click", () => avatarShow(b.dataset.avatarView)));
+
+async function loadAvatarDefaults() {
+  try {
+    const r = await fetch("/api/avatar/defaults");
+    const d = await r.json();
+    document.getElementById("avatar-head-alpha").value = d.head_motion_alpha;
+    document.getElementById("avatar-idle-alpha").value = d.idle_motion_alpha;
+    document.getElementById("avatar-idle-length").value = d.idle_length;
+  } catch (e) {}
+}
+
+document.getElementById("avatar-defaults-save").onclick = async () => {
+  const fd = new FormData();
+  fd.append("head_motion_alpha", document.getElementById("avatar-head-alpha").value);
+  fd.append("idle_motion_alpha", document.getElementById("avatar-idle-alpha").value);
+  fd.append("idle_length", document.getElementById("avatar-idle-length").value);
+  const st = document.getElementById("avatar-defaults-status");
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/avatar/defaults", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+async function loadAvatars() {
+  try {
+    const r = await fetch("/api/avatars");
+    const d = await r.json();
+    const grid = document.getElementById("avatar-admin-grid");
+    grid.innerHTML = "";
+    for (const a of (d.avatars || [])) {
+      const card = document.createElement("div");
+      card.className = "avatar-thumb";
+      const img = document.createElement("img");
+      img.src = "/static/avatars/" + a.image;
+      img.alt = "Avatar " + a.id;
+      img.title = a.idle_ready ? "Click to preview idle" : "Idle video not ready";
+      img.onclick = () => { if (a.idle_ready) previewIdle(a.id); };
+      const name = document.createElement("span");
+      name.className = "avatar-name";
+      name.textContent = (a.name || ("Avatar " + a.id)) + (a.idle_ready ? "" : " (no idle)");
+      const actions = document.createElement("div");
+      actions.className = "profile-actions";
+      const preview = document.createElement("button");
+      preview.className = "secondary"; preview.textContent = "Preview idle";
+      preview.disabled = !a.idle_ready;
+      preview.onclick = () => previewIdle(a.id);
+      const regen = document.createElement("button");
+      regen.className = "secondary"; regen.textContent = "Regenerate";
+      regen.onclick = async () => { regen.disabled = true; regen.textContent = "Regenerating..."; await fetch("/api/avatars/" + a.id + "/regen", { method: "POST" }); setTimeout(loadAvatars, 2000); };
+      const edit = document.createElement("button");
+      edit.className = "secondary"; edit.textContent = "Edit";
+      edit.onclick = () => openAvatarEdit(a);
+      const del = document.createElement("button");
+      del.className = "danger"; del.textContent = "Delete";
+      del.onclick = async () => {
+        if (!confirm("Delete avatar " + a.id + "?")) return;
+        await fetch("/api/avatars/remove", { method: "POST", body: new URLSearchParams({id: a.id}) });
+        loadAvatars();
+      };
+      actions.appendChild(preview); actions.appendChild(regen); actions.appendChild(edit); actions.appendChild(del);
+      card.appendChild(img); card.appendChild(name); card.appendChild(actions);
+      grid.appendChild(card);
+    }
+  } catch (e) {}
+}
+
+function openAvatarEdit(a) {
+  editingAvatarId = a.id;
+  document.getElementById("avatar-modal-title").textContent = "Edit avatar " + a.id;
+  document.getElementById("avatar-modal-name").value = a.name || "";
+  document.getElementById("avatar-file").value = "";
+  document.getElementById("avatar-file-hint").textContent = "leave empty to keep current image";
+  document.getElementById("avatar-modal-head-alpha").value = a.overrides ? a.head_motion_alpha : "";
+  document.getElementById("avatar-modal-idle-alpha").value = a.overrides ? a.idle_motion_alpha : "";
+  document.getElementById("avatar-modal-idle-length").value = a.overrides ? a.idle_length : "";
+  document.getElementById("avatar-modal").style.display = "flex";
+}
+
+document.getElementById("avatar-add").onclick = () => {
+  editingAvatarId = null;
+  document.getElementById("avatar-modal-title").textContent = "Add avatar";
+  document.getElementById("avatar-modal-name").value = "";
+  document.getElementById("avatar-file").value = "";
+  document.getElementById("avatar-file-hint").textContent = "required - square image works best";
+  document.getElementById("avatar-modal-head-alpha").value = "";
+  document.getElementById("avatar-modal-idle-alpha").value = "";
+  document.getElementById("avatar-modal-idle-length").value = "";
+  document.getElementById("avatar-modal").style.display = "flex";
+};
+
+document.getElementById("avatar-modal-cancel").onclick = () => { document.getElementById("avatar-modal").style.display = "none"; };
+
+document.getElementById("avatar-modal-save").onclick = async () => {
+  const st = document.getElementById("avatar-modal-status");
+  if (editingAvatarId) {
+    const fd = new FormData();
+    fd.append("name", document.getElementById("avatar-modal-name").value);
+    fd.append("head_motion_alpha", document.getElementById("avatar-modal-head-alpha").value);
+    fd.append("idle_motion_alpha", document.getElementById("avatar-modal-idle-alpha").value);
+    fd.append("idle_length", document.getElementById("avatar-modal-idle-length").value);
+    const file = document.getElementById("avatar-file").files[0];
+    if (file) fd.append("image", file);
+    st.textContent = "Saving...";
+    try {
+      const r = await fetch("/api/avatars/" + editingAvatarId, { method: "PUT", body: fd });
+      if (!r.ok) throw new Error("failed");
+      document.getElementById("avatar-modal").style.display = "none";
+      loadAvatars();
+    } catch (e) { st.textContent = "Save failed"; }
+    return;
+  }
+  const file = document.getElementById("avatar-file").files[0];
+  if (!file) { st.textContent = "choose an image"; return; }
+  const fd = new FormData();
+  fd.append("image", file);
+  fd.append("name", document.getElementById("avatar-modal-name").value);
+  fd.append("head_motion_alpha", document.getElementById("avatar-modal-head-alpha").value);
+  fd.append("idle_motion_alpha", document.getElementById("avatar-modal-idle-alpha").value);
+  fd.append("idle_length", document.getElementById("avatar-modal-idle-length").value);
+  st.textContent = "Adding... (idle video generates in background)";
+  try {
+    const r = await fetch("/api/avatars/add", { method: "POST", body: fd });
+    if (!r.ok) throw new Error("failed");
+    document.getElementById("avatar-modal").style.display = "none";
+    loadAvatars();
+  } catch (e) { st.textContent = "Add failed"; }
+};
+
+loadAvatarDefaults();
+loadAvatars();
+
+function previewIdle(id) {
+  document.getElementById("preview-video").src = "/static/avatars/" + id + ".mp4";
+  document.getElementById("preview-modal").style.display = "flex";
+}
+document.getElementById("preview-close").onclick = () => {
+  document.getElementById("preview-modal").style.display = "none";
+  document.getElementById("preview-video").src = "";
+};
+
+// --- Personalities tab ---
+let editingPersId = null;
+let persDefaultPrompt = "";
+
+function persShow(view) {
+  document.querySelectorAll("[data-pers-view]").forEach((b) => b.classList.toggle("active", b.dataset.persView === view));
+  document.getElementById("pers-defaults").classList.toggle("active", view === "defaults");
+  document.getElementById("pers-list").classList.toggle("active", view === "personalities");
+}
+document.querySelectorAll("[data-pers-view]").forEach((b) => b.addEventListener("click", () => persShow(b.dataset.persView)));
+
+async function loadPersDefault() {
+  try {
+    const r = await fetch("/api/personality/default");
+    const d = await r.json();
+    persDefaultPrompt = d.prompt || "";
+    document.getElementById("pers-default-prompt").value = persDefaultPrompt;
+  } catch (e) {}
+}
+
+document.getElementById("pers-default-save").onclick = async () => {
+  const st = document.getElementById("pers-default-status");
+  const fd = new FormData();
+  fd.append("prompt", document.getElementById("pers-default-prompt").value);
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/personality/default", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+    if (r.ok) persDefaultPrompt = document.getElementById("pers-default-prompt").value;
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+async function loadPersonalities() {
+  try {
+    const r = await fetch("/api/personalities");
+    const d = await r.json();
+    const grid = document.getElementById("pers-grid");
+    grid.innerHTML = "";
+    const list = (d.personalities || []).filter((p) => p.id !== "default");
+    if (!list.length) {
+      grid.innerHTML = '<div class="side-empty">No personalities yet. Add one to get started.</div>';
+      return;
+    }
+    for (const p of list) {
+      const row = document.createElement("div");
+      row.className = "profile";
+      const info = document.createElement("div");
+      info.className = "profile-info";
+      const name = document.createElement("strong");
+      name.textContent = p.name;
+      const snippet = document.createElement("span");
+      snippet.className = "prompt-snippet";
+      snippet.textContent = (p.prompt || "").replace(/\s+/g, " ").trim();
+      info.appendChild(name); info.appendChild(snippet);
+      const actions = document.createElement("div");
+      actions.className = "profile-actions";
+      const edit = document.createElement("button");
+      edit.className = "secondary"; edit.textContent = "Edit";
+      edit.onclick = () => openPersEdit(p);
+      const del = document.createElement("button");
+      del.className = "danger"; del.textContent = "Delete";
+      del.onclick = async () => {
+        if (!confirm("Delete personality \"" + p.name + "\"?")) return;
+        await fetch("/api/personalities/remove", { method: "POST", body: new URLSearchParams({id: p.id}) });
+        loadPersonalities();
+      };
+      actions.appendChild(edit); actions.appendChild(del);
+      row.appendChild(info); row.appendChild(actions);
+      grid.appendChild(row);
+    }
+  } catch (e) {}
+}
+
+function openPersEdit(p) {
+  editingPersId = p.id;
+  document.getElementById("pers-modal-title").textContent = "Edit personality";
+  document.getElementById("pers-modal-name").value = p.name || "";
+  document.getElementById("pers-modal-prompt").value = p.prompt || "";
+  document.getElementById("pers-modal").style.display = "flex";
+}
+
+document.getElementById("pers-add").onclick = async () => {
+  editingPersId = null;
+  document.getElementById("pers-modal-title").textContent = "Add personality";
+  document.getElementById("pers-modal-name").value = "";
+  if (!persDefaultPrompt) {
+    try { const d = await (await fetch("/api/personality/default")).json(); persDefaultPrompt = d.prompt || ""; } catch (e) {}
+  }
+  document.getElementById("pers-modal-prompt").value = persDefaultPrompt;
+  document.getElementById("pers-modal").style.display = "flex";
+};
+
+document.getElementById("pers-modal-cancel").onclick = () => { document.getElementById("pers-modal").style.display = "none"; };
+
+document.getElementById("pers-modal-save").onclick = async () => {
+  const st = document.getElementById("pers-modal-status");
+  const name = document.getElementById("pers-modal-name").value;
+  const prompt = document.getElementById("pers-modal-prompt").value;
+  st.textContent = "Saving...";
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("prompt", prompt);
+  try {
+    let r;
+    if (editingPersId) {
+      r = await fetch("/api/personalities/" + encodeURIComponent(editingPersId), { method: "PUT", body: fd });
+    } else {
+      r = await fetch("/api/personalities/add", { method: "POST", body: fd });
+    }
+    if (!r.ok) {
+      let msg = "Save failed";
+      try { msg = (await r.json()).detail || msg; } catch (e) {}
+      st.textContent = msg;
+      return;
+    }
+    document.getElementById("pers-modal").style.display = "none";
+    st.textContent = "";
+    loadPersonalities();
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+loadPersDefault();
+loadPersonalities();
+
+// --- LLMs tab ---
+let editingLlmName = null;
+let llmDefaults = null;
+
+function llmShow(view) {
+  document.querySelectorAll("[data-llm-view]").forEach((b) => b.classList.toggle("active", b.dataset.llmView === view));
+  document.getElementById("llm-defaults").classList.toggle("active", view === "defaults");
+  document.getElementById("llm-models").classList.toggle("active", view === "models");
+  document.getElementById("llm-add").classList.toggle("active", view === "add");
+}
+document.querySelectorAll("[data-llm-view]").forEach((b) => b.addEventListener("click", () => llmShow(b.dataset.llmView)));
+
+async function loadLlmDefaults() {
+  try {
+    const r = await fetch("/api/llm/defaults");
+    const d = await r.json();
+    llmDefaults = d;
+    document.getElementById("llm-context").value = d.context_tokens;
+    document.getElementById("llm-history").value = d.max_history_tokens;
+    document.getElementById("llm-temp").value = d.temperature;
+    document.getElementById("llm-maxtokens").value = d.max_tokens;
+    document.getElementById("llm-thinking").checked = !!d.thinking;
+    document.getElementById("llm-add-context").value = d.context_tokens;
+    document.getElementById("llm-add-history").value = d.max_history_tokens;
+    document.getElementById("llm-add-temp").value = d.temperature;
+    document.getElementById("llm-add-maxtokens").value = d.max_tokens;
+    document.getElementById("llm-add-thinking").checked = !!d.thinking;
+  } catch (e) {}
+}
+
+document.getElementById("llm-defaults-save").onclick = async () => {
+  const st = document.getElementById("llm-defaults-status");
+  const fd = new FormData();
+  fd.append("context_tokens", document.getElementById("llm-context").value);
+  fd.append("max_history_tokens", document.getElementById("llm-history").value);
+  fd.append("temperature", document.getElementById("llm-temp").value);
+  fd.append("max_tokens", document.getElementById("llm-maxtokens").value);
+  fd.append("thinking", document.getElementById("llm-thinking").checked ? "1" : "0");
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/llm/defaults", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+    if (r.ok) loadLlmDefaults();
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+async function loadLlmModels() {
+  try {
+    const r = await fetch("/api/llm/models");
+    const d = await r.json();
+    const list = document.getElementById("llm-models-list");
+    list.innerHTML = "";
+    const models = d.models || [];
+    if (!models.length) {
+      list.innerHTML = '<div class="side-empty">No models yet. Add one in the "Add model" view.</div>';
+      return;
+    }
+    for (const m of models) {
+      const row = document.createElement("div");
+      row.className = "profile";
+      const info = document.createElement("div");
+      info.className = "profile-info";
+      const name = document.createElement("strong");
+      name.textContent = m.name;
+      const detail = document.createElement("span");
+      detail.className = "prompt-snippet";
+      detail.textContent = m.model + "  |  " + m.base_url + "  |  ctx " + m.context_tokens + "  |  hist " + m.max_history_tokens + "  |  temp " + m.temperature + "  |  max " + m.max_tokens + "  |  think " + (m.thinking ? "on" : "off");
+      info.appendChild(name); info.appendChild(detail);
+      const actions = document.createElement("div");
+      actions.className = "profile-actions";
+      const edit = document.createElement("button");
+      edit.className = "secondary"; edit.textContent = "Edit";
+      edit.onclick = () => openLlmEdit(m);
+      const del = document.createElement("button");
+      del.className = "danger"; del.textContent = "Delete";
+      del.onclick = async () => {
+        if (!confirm("Delete model \"" + m.name + "\"?")) return;
+        await fetch("/api/llm/models/remove", { method: "POST", body: new URLSearchParams({id: m.name}) });
+        loadLlmModels();
+      };
+      actions.appendChild(edit); actions.appendChild(del);
+      row.appendChild(info); row.appendChild(actions);
+      list.appendChild(row);
+    }
+  } catch (e) {}
+}
+
+function openLlmEdit(m) {
+  editingLlmName = m.name;
+  document.getElementById("llm-modal-title").textContent = "Edit model \"" + m.name + "\"";
+  document.getElementById("llm-modal-name").value = m.name;
+  document.getElementById("llm-modal-url").value = m.base_url;
+  document.getElementById("llm-modal-model").value = m.model;
+  document.getElementById("llm-modal-context").value = m.context_tokens;
+  document.getElementById("llm-modal-history").value = m.max_history_tokens;
+  document.getElementById("llm-modal-temp").value = m.temperature;
+  document.getElementById("llm-modal-maxtokens").value = m.max_tokens;
+  document.getElementById("llm-modal-thinking").checked = !!m.thinking;
+  document.getElementById("llm-modal-token").value = m.api_token || "";
+  document.getElementById("llm-modal").style.display = "flex";
+}
+
+document.getElementById("llm-modal-cancel").onclick = () => { document.getElementById("llm-modal").style.display = "none"; };
+
+document.getElementById("llm-modal-save").onclick = async () => {
+  const st = document.getElementById("llm-modal-status");
+  const fd = new FormData();
+  fd.append("new_name", document.getElementById("llm-modal-name").value);
+  fd.append("base_url", document.getElementById("llm-modal-url").value);
+  fd.append("model", document.getElementById("llm-modal-model").value);
+  fd.append("context_tokens", document.getElementById("llm-modal-context").value);
+  fd.append("max_history_tokens", document.getElementById("llm-modal-history").value);
+  fd.append("temperature", document.getElementById("llm-modal-temp").value);
+  fd.append("max_tokens", document.getElementById("llm-modal-maxtokens").value);
+  fd.append("thinking", document.getElementById("llm-modal-thinking").checked ? "1" : "0");
+  fd.append("api_token", document.getElementById("llm-modal-token").value);
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/llm/models/" + encodeURIComponent(editingLlmName), { method: "PUT", body: fd });
+    if (!r.ok) {
+      let msg = "Save failed";
+      try { msg = (await r.json()).detail || msg; } catch (e) {}
+      st.textContent = msg;
+      return;
+    }
+    document.getElementById("llm-modal").style.display = "none";
+    loadLlmModels();
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+document.getElementById("llm-fetch").onclick = async () => {
+  const st = document.getElementById("llm-fetch-status");
+  const url = document.getElementById("llm-add-url").value.trim();
+  if (!url) { st.textContent = "enter a URL"; return; }
+  st.textContent = "Fetching...";
+  try {
+    const r = await fetch("/api/llm/fetch-models", { method: "POST", body: new URLSearchParams({base_url: url}) });
+    const d = await r.json();
+    if (!r.ok) { st.textContent = d.detail || "fetch failed"; return; }
+    const sel = document.getElementById("llm-add-model-select");
+    sel.innerHTML = "";
+    const models = d.models || [];
+    if (!models.length) { st.textContent = "no models returned"; return; }
+    for (const m of models) {
+      const opt = document.createElement("option");
+      opt.value = m; opt.textContent = m;
+      sel.appendChild(opt);
+    }
+    st.textContent = models.length + " models found";
+  } catch (e) { st.textContent = "fetch failed"; }
+};
+
+document.getElementById("llm-add-save").onclick = async () => {
+  const st = document.getElementById("llm-add-status");
+  const name = document.getElementById("llm-add-name").value.trim();
+  const url = document.getElementById("llm-add-url").value.trim();
+  const model = document.getElementById("llm-add-model-select").value;
+  if (!name) { st.textContent = "name required"; return; }
+  if (!url) { st.textContent = "base URL required"; return; }
+  if (!model) { st.textContent = "select a model"; return; }
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("base_url", url);
+  fd.append("model", model);
+  fd.append("context_tokens", document.getElementById("llm-add-context").value);
+  fd.append("max_history_tokens", document.getElementById("llm-add-history").value);
+  fd.append("temperature", document.getElementById("llm-add-temp").value);
+  fd.append("max_tokens", document.getElementById("llm-add-maxtokens").value);
+  fd.append("thinking", document.getElementById("llm-add-thinking").checked ? "1" : "0");
+  fd.append("api_token", document.getElementById("llm-add-token").value);
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/llm/models/add", { method: "POST", body: fd });
+    if (!r.ok) {
+      let msg = "Save failed";
+      try { msg = (await r.json()).detail || msg; } catch (e) {}
+      st.textContent = msg;
+      return;
+    }
+    st.textContent = "Saved";
+    document.getElementById("llm-add-name").value = "";
+    loadLlmModels();
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+loadLlmDefaults();
+loadLlmModels();
+
+// --- General tab (memory / server / auth / toolcalling) ---
+function genShow(view) {
+  document.querySelectorAll("[data-gen-view]").forEach((b) => b.classList.toggle("active", b.dataset.genView === view));
+  ["memory", "server", "auth", "toolcalling"].forEach((v) => {
+    document.getElementById("gen-" + v).classList.toggle("active", view === v);
+  });
+}
+document.querySelectorAll("[data-gen-view]").forEach((b) => b.addEventListener("click", () => genShow(b.dataset.genView)));
+
+async function loadMemorySettings() {
+  try {
+    const d = await (await fetch("/api/memory/settings")).json();
+    document.getElementById("mem-brain-dir").value = d.brain_dir;
+    document.getElementById("mem-db-path").value = d.db_path;
+    document.getElementById("mem-embed-model").value = d.embedding_model;
+    document.getElementById("mem-embed-device").value = d.embedding_device;
+    document.getElementById("mem-top-k").value = d.top_k;
+    document.getElementById("mem-min-score").value = d.min_score;
+    document.getElementById("mem-max-chars").value = d.max_chars;
+    document.getElementById("mem-body-chars").value = d.body_chars;
+    document.getElementById("mem-curate-every").value = d.curate_every;
+    document.getElementById("mem-history-max").value = d.history_max_turns;
+  } catch (e) {}
+}
+
+document.getElementById("mem-save").onclick = async () => {
+  const st = document.getElementById("mem-status");
+  const fd = new FormData();
+  fd.append("brain_dir", document.getElementById("mem-brain-dir").value);
+  fd.append("db_path", document.getElementById("mem-db-path").value);
+  fd.append("embedding_model", document.getElementById("mem-embed-model").value);
+  fd.append("embedding_device", document.getElementById("mem-embed-device").value);
+  fd.append("top_k", document.getElementById("mem-top-k").value);
+  fd.append("min_score", document.getElementById("mem-min-score").value);
+  fd.append("max_chars", document.getElementById("mem-max-chars").value);
+  fd.append("body_chars", document.getElementById("mem-body-chars").value);
+  fd.append("curate_every", document.getElementById("mem-curate-every").value);
+  fd.append("history_max_turns", document.getElementById("mem-history-max").value);
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/memory/settings", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+async function loadServerSettings() {
+  try {
+    const d = await (await fetch("/api/server/settings")).json();
+    document.getElementById("srv-host").value = d.host;
+    document.getElementById("srv-port").value = d.port;
+    document.getElementById("srv-https").checked = !!d.https;
+    document.getElementById("srv-token").value = d.api_token;
+    document.getElementById("srv-cert-status").textContent = d.ssl_ready ? "cert present" : "no cert yet";
+  } catch (e) {}
+}
+
+document.getElementById("srv-save").onclick = async () => {
+  const st = document.getElementById("srv-status");
+  const fd = new FormData();
+  fd.append("host", document.getElementById("srv-host").value);
+  fd.append("port", document.getElementById("srv-port").value);
+  fd.append("https", document.getElementById("srv-https").checked ? "1" : "0");
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/server/settings", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved (restart to apply)" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+document.getElementById("srv-token-gen").onclick = async () => {
+  try {
+    const d = await (await fetch("/api/server/generate-token", { method: "POST" })).json();
+    document.getElementById("srv-token").value = d.api_token;
+  } catch (e) {}
+};
+
+document.getElementById("srv-cert").onclick = async () => {
+  const st = document.getElementById("srv-cert-status");
+  st.textContent = "Generating...";
+  try {
+    const r = await fetch("/api/server/generate-cert", { method: "POST" });
+    const d = await r.json();
+    st.textContent = r.ok ? "cert generated (restart to apply)" : (d.detail || "failed");
+  } catch (e) { st.textContent = "failed"; }
+};
+
+async function loadAuthSettings() {
+  try {
+    const d = await (await fetch("/api/auth/settings")).json();
+    document.getElementById("auth-username").value = d.username;
+    document.getElementById("auth-password").value = d.password;
+    document.getElementById("auth-hf-token").value = d.hf_token;
+  } catch (e) {}
+}
+
+document.getElementById("auth-save").onclick = async () => {
+  const st = document.getElementById("auth-status");
+  const fd = new FormData();
+  fd.append("username", document.getElementById("auth-username").value);
+  fd.append("password", document.getElementById("auth-password").value);
+  fd.append("hf_token", document.getElementById("auth-hf-token").value);
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/auth/settings", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+document.getElementById("auth-pass-gen").onclick = async () => {
+  try {
+    const d = await (await fetch("/api/auth/generate-password", { method: "POST" })).json();
+    document.getElementById("auth-password").value = d.password;
+  } catch (e) {}
+};
+
+async function loadToolcalling() {
+  try {
+    const d = await (await fetch("/api/toolcalling")).json();
+    document.getElementById("tc-enabled").checked = !!d.enabled;
+  } catch (e) {}
+}
+
+document.getElementById("tc-save").onclick = async () => {
+  const st = document.getElementById("tc-status");
+  const fd = new FormData();
+  fd.append("enabled", document.getElementById("tc-enabled").checked ? "1" : "0");
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/toolcalling", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+loadMemorySettings();
+loadServerSettings();
+loadAuthSettings();
+loadToolcalling();
+
+// --- TTS general ---
+async function loadTtsGeneral() {
+  try {
+    const d = await (await fetch("/api/tts/general")).json();
+    document.getElementById("ttsg-min-chunk").value = d.min_chunk_chars;
+    document.getElementById("ttsg-max-chunk").value = d.max_chunk_chars;
+    document.getElementById("ttsg-mode").value = d.default_mode;
+    document.getElementById("ttsg-format").value = d.output_format;
+    document.getElementById("ttsg-gain").value = d.gain_db;
+    document.getElementById("ttsg-sample-rate").value = d.sample_rate;
+    document.getElementById("ttsg-audio-ttl").value = d.audio_ttl_hours;
+    document.getElementById("ttsg-enabled").checked = !!d.enabled;
+    document.getElementById("ttsg-engine").value = d.default_model;
+    document.getElementById("ttsg-instruction").value = d.default_instruction;
+    document.getElementById("ttsg-cfg-scale").value = d.default_cfg_scale;
+    // populate voice design + clone dropdowns
+    const vd = await (await fetch("/api/voices")).json();
+    const all = vd.voices || [];
+    const clones = all.filter((v) => v.kind === "clone");
+    const designs = all.filter((v) => v.kind === "design");
+    const voiceSel = document.getElementById("ttsg-voice");
+    const designSel = document.getElementById("ttsg-design");
+    voiceSel.innerHTML = "";
+    designSel.innerHTML = "";
+    const noneV = document.createElement("option"); noneV.value = ""; noneV.textContent = "(none)"; voiceSel.appendChild(noneV);
+    for (const v of clones) { const o = document.createElement("option"); o.value = v.id; o.textContent = v.name; voiceSel.appendChild(o); }
+    const noneD = document.createElement("option"); noneD.value = ""; noneD.textContent = "(none)"; designSel.appendChild(noneD);
+    for (const v of designs) { const o = document.createElement("option"); o.value = v.id; o.textContent = v.name; designSel.appendChild(o); }
+    voiceSel.value = d.default_voice_id || "";
+    designSel.value = d.default_instruction_id || "";
+  } catch (e) {}
+}
+
+document.getElementById("ttsg-save").onclick = async () => {
+  const st = document.getElementById("ttsg-status");
+  const fd = new FormData();
+  fd.append("min_chunk_chars", document.getElementById("ttsg-min-chunk").value);
+  fd.append("max_chunk_chars", document.getElementById("ttsg-max-chunk").value);
+  fd.append("default_mode", document.getElementById("ttsg-mode").value);
+  fd.append("output_format", document.getElementById("ttsg-format").value);
+  fd.append("gain_db", document.getElementById("ttsg-gain").value);
+  fd.append("sample_rate", document.getElementById("ttsg-sample-rate").value);
+  fd.append("audio_ttl_hours", document.getElementById("ttsg-audio-ttl").value);
+  fd.append("enabled", document.getElementById("ttsg-enabled").checked ? "1" : "0");
+  fd.append("default_model", document.getElementById("ttsg-engine").value);
+  fd.append("default_voice_id", document.getElementById("ttsg-voice").value);
+  fd.append("default_instruction_id", document.getElementById("ttsg-design").value);
+  fd.append("default_instruction", document.getElementById("ttsg-instruction").value);
+  fd.append("default_cfg_scale", document.getElementById("ttsg-cfg-scale").value);
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/tts/general", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+// --- Avatar general ---
+async function loadAvatarGeneral() {
+  try {
+    const d = await (await fetch("/api/avatar/general")).json();
+    document.getElementById("avg-video-ttl").value = d.video_ttl_hours;
+  } catch (e) {}
+}
+
+document.getElementById("avg-save").onclick = async () => {
+  const st = document.getElementById("avg-status");
+  const fd = new FormData();
+  fd.append("video_ttl_hours", document.getElementById("avg-video-ttl").value);
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/avatar/general", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+loadTtsGeneral();
+loadAvatarGeneral();
+
+// --- Status tab ---
+function statusShow(view) {
+  document.querySelectorAll("[data-status-view]").forEach((b) => b.classList.toggle("active", b.dataset.statusView === view));
+  document.getElementById("status-health").classList.toggle("active", view === "health");
+  document.getElementById("status-logs").classList.toggle("active", view === "logs");
+}
+document.querySelectorAll("[data-status-view]").forEach((b) => b.addEventListener("click", () => statusShow(b.dataset.statusView)));
+
+async function loadStatus() {
+  try {
+    const d = await (await fetch("/api/status")).json();
+    renderStatus(d);
+  } catch (e) {
+    document.getElementById("status-cards").innerHTML = '<div class="side-empty">Failed to load status</div>';
+  }
+}
+
+function renderStatus(d) {
+  const gpu = d.gpu || {};
+  const gpuText = gpu.used_gb != null
+    ? "GPU: " + gpu.used_gb + " GB / " + gpu.total_gb + " GB used · models ~" + gpu.models_used_gb + " GB · system ~" + gpu.system_used_gb + " GB"
+    : "GPU: nvidia-smi unavailable";
+  document.getElementById("status-gpu").textContent = gpuText;
+
+  const cards = [];
+
+  const stt = d.stt || {};
+  const sttBadge = stt.loaded ? '<span class="badge ok">LOADED</span>' : (stt.available ? '<span class="badge off">UNLOADED</span>' : '<span class="badge err">MISSING</span>');
+  cards.push('<section class="card">' +
+    '<div class="status-row"><strong>Speech to Text (Whisper)</strong> ' + sttBadge + '</div>' +
+    '<div class="status-row"><span class="status">model: ' + (stt.model || "?") + ' · installed: ' + (stt.available ? "yes" : "no") + ' · enabled: ' + (stt.enabled ? "yes" : "no") + ' · vram ~' + stt.vram_est_gb + ' GB</span></div>' +
+    (!stt.available ? '<div class="status-row"><button class="danger stt-dl" data-model="' + stt.model + '">Download model</button> <a class="download" href="' + (stt.repo || "#") + '" target="_blank" rel="noopener">HuggingFace page</a></div>' : '') +
+  '</section>');
+
+  for (const t of (d.tts || [])) {
+    let b, state;
+    if (t.loaded) { b = "ok"; state = "LOADED"; }
+    else if (!t.available) { b = "err"; state = "UNAVAILABLE"; }
+    else if (!t.enabled) { b = "off"; state = "DISABLED"; }
+    else { b = "off"; state = "UNLOADED"; }
+    cards.push('<section class="card">' +
+      '<div class="status-row"><strong>TTS · ' + t.name + '</strong> <span class="badge ' + b + '">' + state + '</span></div>' +
+      '<div class="status-row"><span class="status">installed: ' + (t.available ? "yes" : "no") + ' · vram ~' + t.vram_est_gb + ' GB</span></div>' +
+      (t.load_error ? '<div class="status-row"><span class="status err">error: ' + t.load_error + '</span></div>' : '') +
+    '</section>');
+  }
+
+  const di = d.ditto || {};
+  cards.push('<section class="card">' +
+    '<div class="status-row"><strong>DITTO (avatar video)</strong> ' + (di.running ? '<span class="badge ok">RUNNING</span>' : '<span class="badge off">STOPPED</span>') + '</div>' +
+    '<div class="status-row"><span class="status">enabled: ' + (di.enabled ? "yes" : "no") + ' · vram ~' + di.vram_est_gb + ' GB</span></div>' +
+  '</section>');
+
+  const emb = d.embedding || {};
+  const embBadge = emb.loaded ? '<span class="badge ok">LOADED</span>' : (emb.installed ? '<span class="badge off">INSTALLED</span>' : '<span class="badge err">MISSING</span>');
+  cards.push('<section class="card">' +
+    '<div class="status-row"><strong>Embedding (memory)</strong> ' + embBadge + '</div>' +
+    '<div class="status-row"><span class="status">model: ' + (emb.model || "?") + ' · device: ' + (emb.device || "cpu") + ' · installed: ' + (emb.installed ? "yes" : "no") + ' · size ~' + emb.vram_est_gb + ' GB</span></div>' +
+    (!emb.installed ? '<div class="status-row"><button class="danger emb-dl">Download model</button> <a class="download" href="' + (emb.repo || "#") + '" target="_blank" rel="noopener">HuggingFace page</a></div>' : '') +
+  '</section>');
+
+  document.getElementById("status-cards").innerHTML = cards.join("");
+  document.querySelectorAll(".stt-dl").forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = "Downloading...";
+      try {
+        await fetch("/api/stt/download", { method: "POST", body: new URLSearchParams({ model: btn.dataset.model }) });
+        btn.textContent = "Downloading (background)...";
+      } catch (e) { btn.textContent = "Download failed"; btn.disabled = false; }
+    };
+  });
+  document.querySelectorAll(".emb-dl").forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = "Downloading...";
+      try {
+        await fetch("/api/embedding/download", { method: "POST" });
+        btn.textContent = "Downloading (background)...";
+      } catch (e) { btn.textContent = "Download failed"; btn.disabled = false; }
+    };
+  });
+}
+
+document.getElementById("status-refresh").onclick = loadStatus;
+
+async function loadLogs() {
+  try {
+    const d = await (await fetch("/api/logs")).json();
+    document.getElementById("logs-output").textContent = d.log || "(no log entries yet)";
+  } catch (e) {}
+}
+
+async function loadLogSettings() {
+  try {
+    const d = await (await fetch("/api/logs/settings")).json();
+    document.getElementById("logs-retention").value = d.retention_hours;
+  } catch (e) {}
+}
+
+document.getElementById("logs-reload").onclick = loadLogs;
+
+document.getElementById("logs-clear").onclick = async () => {
+  if (!confirm("Delete the entire log file?")) return;
+  await fetch("/api/logs/clear", { method: "POST" });
+  loadLogs();
+};
+
+document.getElementById("logs-save").onclick = async () => {
+  const st = document.getElementById("logs-save-status");
+  const fd = new FormData();
+  fd.append("retention_hours", document.getElementById("logs-retention").value);
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/logs/settings", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+loadStatus();
+loadLogs();
+loadLogSettings();
+
+// --- Profiles tab ---
+let editingProfName = null;
+let profVoices = [];
+let profEngines = [];
+
+function profVoiceName(id) {
+  const v = profVoices.find((x) => x.id === id);
+  return v ? v.name : "";
+}
+
+async function loadProfDropdowns() {
+  try {
+    const [pd, vd, ed, md] = await Promise.all([
+      (await fetch("/api/personalities")).json(),
+      (await fetch("/api/voices")).json(),
+      (await fetch("/api/engines")).json(),
+      (await fetch("/api/llm/models")).json(),
+    ]);
+    profVoices = vd.voices || [];
+    profEngines = ed.engines || [];
+
+    const psel = document.getElementById("prof-personality");
+    psel.innerHTML = "";
+    const pdOpt = document.createElement("option"); pdOpt.value = "default"; pdOpt.textContent = "default"; psel.appendChild(pdOpt);
+    for (const p of (pd.personalities || [])) {
+      if (p.id === "default") continue;
+      const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; psel.appendChild(o);
+    }
+
+    const tsel = document.getElementById("prof-tts");
+    tsel.innerHTML = "";
+    for (const e of profEngines) {
+      const o = document.createElement("option"); o.value = e.name; o.textContent = e.name; tsel.appendChild(o);
+    }
+
+    const msel = document.getElementById("prof-model");
+    msel.innerHTML = "";
+    for (const m of (md.models || [])) {
+      const o = document.createElement("option"); o.value = m.name; o.textContent = m.name; msel.appendChild(o);
+    }
+  } catch (e) {}
+}
+
+function _noneOption() {
+  const o = document.createElement("option"); o.value = ""; o.textContent = "(none)"; return o;
+}
+
+function voiceMarkedFor(v, engineName) {
+  if (v.engines && Array.isArray(v.engines) && v.engines.length) {
+    return v.engines.includes(engineName);
+  }
+  return v.model === engineName;
+}
+
+function updateProfVoiceDropdowns(engineName) {
+  const engine = profEngines.find((e) => e.name === engineName) || {};
+  const supportsClone = !!engine.supports_cloning;
+  const supportsDesign = !!engine.supports_design;
+
+  const vsel = document.getElementById("prof-voice");
+  const dsel = document.getElementById("prof-design");
+  vsel.innerHTML = "";
+  dsel.innerHTML = "";
+
+  const clones = supportsClone ? profVoices.filter((v) => v.kind === "clone" && voiceMarkedFor(v, engineName)) : [];
+  vsel.appendChild(_noneOption());
+  for (const v of clones) {
+    const o = document.createElement("option"); o.value = v.id; o.textContent = v.name; vsel.appendChild(o);
+  }
+  vsel.disabled = clones.length === 0;
+
+  const designs = supportsDesign ? profVoices.filter((v) => v.kind === "design" && voiceMarkedFor(v, engineName)) : [];
+  dsel.appendChild(_noneOption());
+  for (const v of designs) {
+    const o = document.createElement("option"); o.value = v.id; o.textContent = v.name; dsel.appendChild(o);
+  }
+  dsel.disabled = designs.length === 0;
+}
+
+document.getElementById("prof-tts").onchange = () => updateProfVoiceDropdowns(document.getElementById("prof-tts").value);
+
+async function loadTalkProfiles() {
+  try {
+    const d = await (await fetch("/api/profiles")).json();
+    renderTalkProfiles(d);
+  } catch (e) {}
+}
+
+function renderTalkProfiles(d) {
+  const grid = document.getElementById("prof-grid");
+  grid.innerHTML = "";
+  const profiles = d.profiles || {};
+  const names = Object.keys(profiles);
+  if (!names.length) {
+    grid.innerHTML = '<div class="side-empty">No profiles yet. Add one to get started.</div>';
+    return;
+  }
+  for (const name of names) {
+    const p = profiles[name];
+    const isDefault = d.default === name;
+    const row = document.createElement("div");
+    row.className = "profile";
+    const info = document.createElement("div");
+    info.className = "profile-info";
+    const nm = document.createElement("strong");
+    nm.textContent = name + (isDefault ? " (default)" : "");
+    const det = document.createElement("span");
+    det.className = "prompt-snippet";
+    det.textContent = "personality: " + (p.personality || "-") + "  |  tts: " + (p.tts_model || "-") + "  |  voice: " + (profVoiceName(p.voice_id) || "none") + "  |  design: " + (profVoiceName(p.instruction_id) || "none") + "  |  llm: " + (p.model || "-");
+    info.appendChild(nm); info.appendChild(det);
+    const actions = document.createElement("div");
+    actions.className = "profile-actions";
+    const defBtn = document.createElement("button");
+    defBtn.className = "secondary"; defBtn.textContent = "Set default";
+    defBtn.disabled = isDefault;
+    defBtn.onclick = async () => { await fetch("/api/profiles/set-default", { method: "POST", body: new URLSearchParams({ name }) }); loadTalkProfiles(); };
+    const edit = document.createElement("button");
+    edit.className = "secondary"; edit.textContent = "Edit";
+    edit.onclick = () => openTalkProfileEdit(name, p);
+    const del = document.createElement("button");
+    del.className = "danger"; del.textContent = "Delete";
+    del.onclick = async () => {
+      if (!confirm("Delete profile \"" + name + "\"?")) return;
+      await fetch("/api/profiles/delete", { method: "POST", body: new URLSearchParams({ name }) });
+      loadTalkProfiles();
+    };
+    actions.appendChild(defBtn); actions.appendChild(edit); actions.appendChild(del);
+    row.appendChild(info); row.appendChild(actions);
+    grid.appendChild(row);
+  }
+}
+
+function openTalkProfileEdit(name, p) {
+  editingProfName = name;
+  document.getElementById("prof-modal-title").textContent = "Edit profile \"" + name + "\"";
+  document.getElementById("prof-name").value = name;
+  document.getElementById("prof-personality").value = p.personality || "default";
+  document.getElementById("prof-tts").value = p.tts_model || "";
+  document.getElementById("prof-model").value = p.model || "";
+  document.getElementById("prof-mode").value = p.mode || "chunked";
+  updateProfVoiceDropdowns(p.tts_model || "");
+  document.getElementById("prof-voice").value = p.voice_id || "";
+  document.getElementById("prof-design").value = p.instruction_id || "";
+  document.getElementById("prof-modal").style.display = "flex";
+}
+
+document.getElementById("prof-add").onclick = async () => {
+  if (!profVoices.length && !profEngines.length) { await loadProfDropdowns(); }
+  editingProfName = null;
+  document.getElementById("prof-modal-title").textContent = "Add profile";
+  document.getElementById("prof-name").value = "";
+  document.getElementById("prof-personality").value = "default";
+  document.getElementById("prof-model").value = "";
+  document.getElementById("prof-mode").value = "chunked";
+  const tsel = document.getElementById("prof-tts");
+  if (tsel.options.length) { tsel.value = tsel.options[0].value; updateProfVoiceDropdowns(tsel.value); }
+  document.getElementById("prof-modal").style.display = "flex";
+};
+
+document.getElementById("prof-cancel").onclick = () => { document.getElementById("prof-modal").style.display = "none"; };
+
+document.getElementById("prof-save").onclick = async () => {
+  const st = document.getElementById("prof-status");
+  const name = document.getElementById("prof-name").value.trim();
+  if (!name) { st.textContent = "name required"; return; }
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("personality", document.getElementById("prof-personality").value);
+  fd.append("tts_model", document.getElementById("prof-tts").value);
+  fd.append("voice_id", document.getElementById("prof-voice").value);
+  fd.append("instruction_id", document.getElementById("prof-design").value);
+  fd.append("model", document.getElementById("prof-model").value);
+  fd.append("mode", document.getElementById("prof-mode").value);
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/profiles", { method: "POST", body: fd });
+    if (!r.ok) { let m = "Save failed"; try { m = (await r.json()).detail || m; } catch (e) {} st.textContent = m; return; }
+    document.getElementById("prof-modal").style.display = "none";
+    loadTalkProfiles();
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+document.getElementById("prof-test-play").onclick = async () => {
+  const st = document.getElementById("prof-test-status");
+  const text = document.getElementById("prof-test-text").value.trim();
+  if (!text) { st.textContent = "enter some text"; return; }
+  const fd = new FormData();
+  fd.append("text", text);
+  fd.append("model", document.getElementById("prof-tts").value);
+  fd.append("voice_id", document.getElementById("prof-voice").value);
+  fd.append("instruction_id", document.getElementById("prof-design").value);
+  st.textContent = "Generating...";
+  try {
+    const r = await fetch("/api/tts", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) { st.textContent = d.detail || "test failed"; return; }
+    const audio = document.getElementById("prof-test-audio");
+    audio.src = d.audio_url;
+    audio.style.display = "";
+    audio.play().catch(() => {});
+    st.textContent = "";
+  } catch (e) { st.textContent = "Test failed"; }
+};
+
+loadProfDropdowns().then(() => loadTalkProfiles());
+
+// --- DITTO (video generation) management ---
+async function loadDittoStatus() {
+  try {
+    const d = await (await fetch("/api/ditto/status")).json();
+    document.getElementById("ditto-enabled").checked = !!d.enabled;
+    renderDittoStatus(d);
+  } catch (e) {}
+}
+
+function renderDittoStatus(d) {
+  const st = document.getElementById("ditto-status");
+  if (d.running) {
+    st.textContent = d.model_loaded ? "running (model loaded)" : "running (loading model)";
+    st.className = "status ok";
+  } else {
+    st.textContent = "stopped";
+    st.className = "status";
+  }
+}
+
+document.getElementById("ditto-enabled").onchange = async () => {
+  const fd = new FormData();
+  fd.append("enabled", document.getElementById("ditto-enabled").checked ? "1" : "0");
+  try {
+    const r = await fetch("/api/ditto/toggle", { method: "POST", body: fd });
+    if (r.ok) loadDittoStatus();
+  } catch (e) {}
+};
+
+document.getElementById("ditto-load").onclick = async () => {
+  try {
+    await fetch("/api/ditto/load", { method: "POST" });
+    setTimeout(loadDittoStatus, 1500);
+  } catch (e) {}
+};
+
+document.getElementById("ditto-unload").onclick = async () => {
+  try {
+    await fetch("/api/ditto/unload", { method: "POST" });
+    loadDittoStatus();
+  } catch (e) {}
+};
+
+loadDittoStatus();

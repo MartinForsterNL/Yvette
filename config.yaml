@@ -1,0 +1,113 @@
+paths:
+  base: engines
+server:
+  host: 0.0.0.0
+  port: 8900
+  https: false
+  sample_rate: 24000
+  output_format: ogg
+  audio_ttl_hours: 48
+  gain_db: 11
+  video_ttl_hours: 48
+auth:
+  username: Admin
+  password: Testing123
+  api_token: ''
+llm:
+  base_url: http://localhost:1234/v1
+  model: your-model-name
+  context_tokens: 32000
+  max_history_tokens: 24000
+  temperature: 0.7
+  max_tokens: 8192
+  models:
+  - name: default
+    base_url: http://localhost:1234/v1
+    model: your-model-name
+    context_tokens: 32000
+    max_history_tokens: 24000
+chunking:
+  min_chunk_chars: 100
+  max_chunk_chars: 400
+  default_mode: chunked
+history:
+  max_turns: 60
+tts:
+  model: lux
+  instruction_id: ''
+  instruction: A warm, thoughtful young woman with a clear, calm, friendly voice.
+  cfg_scale: 4
+  voice_id: ''
+  enabled: true
+models:
+  unload_idle_minutes: 60
+  kokoro:
+    enabled: true
+    default_voice: bf_isabella
+    speed: 1.5
+    auto_start: false
+  breeze:
+    enabled: true
+    python: breeze/venv/Scripts/python.exe
+    repo_dir: breeze/breeze-tts
+    model_path: breeze/breeze-tts-2
+    port: 8137
+    auto_start: false
+    default_cfg_scale: 4.0
+    default_seed: 12345
+  omnivoice:
+    enabled: true
+    python: omnivoice/venv/Scripts/python.exe
+    server_script: omnivoice/omnivoice_server.py
+    port: 8139
+    model_id: k2-fsa/OmniVoice
+    dtype: float16
+    num_step: 64
+    class_temperature: 1.0
+    default_guidance_scale: 4.0
+    auto_start: true
+  lux:
+    enabled: true
+    python: lux/venv/Scripts/python.exe
+    server_script: lux/lux_server.py
+    port: 8140
+    num_steps: 8
+    t_shift: 0.9
+    rms: 0.01
+    auto_start: false
+ffmpeg: ''
+huggingface:
+  token: ''
+stt:
+  model: large-v3-turbo
+  language: null
+  device: cuda
+  compute_type: float16
+  beam_size: 8
+  enabled: true
+voices:
+  profiles_file: voices/profiles.json
+  ref_audio_dir: voices/ref_audio
+ditto:
+  enabled: true
+  base_url: http://localhost:8902
+  images_dir: ditto/example/images
+  dir: ditto
+  python: ditto/venv/Scripts/python.exe
+  tensorrt_lib: ../TensorRT/TensorRT-8.6.1.6/lib
+memory:
+  brain_dir: brain
+  db_path: brain.index.db
+  embedding:
+    model_name: Qwen/Qwen3-Embedding-0.6B
+    device: cpu
+  top_k: 5
+  min_score: 0.3
+  max_chars: 1200
+  body_chars: 200
+  curate_every: 10
+personality_file: personality.md
+toolcalling:
+  enabled: true
+logs:
+  retention_hours: 48.0

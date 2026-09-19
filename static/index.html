@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yvette</title>
+<link rel="stylesheet" href="/static/style.css?v=44">
+</head>
+<body>
+<div id="entry-screen" class="entry-screen" style="display:none">
+  <div class="entry-card">
+    <h1>Yvette</h1>
+    <p class="entry-sub">Set up your chat before you begin</p>
+    <label for="entry-profile">Profile</label>
+    <select id="entry-profile"></select>
+    <label>Avatar</label>
+    <div id="entry-avatar-grid" class="entry-avatar-grid"></div>
+    <label class="checkbox-label"><input type="checkbox" id="entry-audio" checked> Generate audio</label>
+    <label class="checkbox-label"><input type="checkbox" id="entry-video" checked> Generate avatar video</label>
+    <label class="checkbox-label"><input type="checkbox" id="entry-idle" checked> Show idle avatar</label>
+    <label class="checkbox-label"><input type="checkbox" id="entry-autohide" checked> Auto hide chat while thinking</label>
+    <button id="entry-start" class="entry-start">Start</button>
+  </div>
+</div>
+<button id="chat-toggle" class="chat-toggle" title="Show/hide chat" aria-label="Toggle chat visibility"></button>
+<main class="talk">
+  <header class="topbar">
+    <div class="topbar-main">
+      <button id="avatar-btn" class="avatar-btn" title="Choose avatar"><img id="avatar-btn-img" src="/static/avatars/default.jpg" alt="avatar"></button>
+      <select id="profile-quick" class="profile-quick" title="Profile"></select>
+      <button id="settings-btn" class="settings-btn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></button>
+      <button id="skill-btn" class="skill-btn" title="Skills" aria-label="Skills"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></button>
+      <button id="mute-btn" class="mute-btn" title="Mute audio" aria-label="Mute audio"></button>
+    </div>
+  </header>
+  <div id="conversation" class="conversation"></div>
+  <div id="status" class="status">Hold the button to talk</div>
+  <div id="talking" class="talking" style="display:none">
+    <span></span><span></span><span></span>
+    <span id="talking-label" class="talking-label" style="display:none">Thinking...</span>
+    <button id="stop-btn" class="stop-btn">Stop</button>
+  </div>
+  <div id="image-preview" class="image-preview" style="display:none">
+    <img id="image-preview-img" src="" alt="attached image">
+    <span id="file-preview-name" class="file-preview-name" style="display:none"></span>
+    <button id="image-clear" class="secondary">Remove</button>
+  </div>
+  <div class="text-row">
+    <input type="text" id="text-input" placeholder="Type a message..." autocomplete="off">
+    <button id="send-text" class="send-btn">Send</button>
+  </div>
+  <input type="file" id="image-input" style="display:none">
+  <div class="talk-row">
+    <select id="model-select" class="model-select"></select>
+    <button id="attach-btn" class="attach-btn" title="Attach an image or file">📎</button>
+    <button id="talk-btn" class="talk-btn">Hold to talk</button>
+  </div>
+</main>
+
+<div id="avatar-modal" class="modal" style="display:none">
+  <div class="modal-content avatar-modal-content">
+    <h2>Choose avatar</h2>
+    <div id="avatar-grid" class="avatar-grid"></div>
+    <div class="avatar-actions">
+      <button id="avatar-add-btn" class="secondary">Add avatar</button>
+      <button id="avatar-modal-close" class="secondary">Close</button>
+    </div>
+    <input type="file" id="avatar-file" accept="image/*" style="display:none">
+  </div>
+</div>
+
+<div id="settings-modal" class="modal" style="display:none">
+  <div class="modal-content settings-modal-content">
+    <h2>Voice settings</h2>
+    <div class="settings-scroll">
+    <label for="profile">Profile</label>
+    <select id="profile"></select>
+    <div class="profile-actions">
+      <button id="save-profile" class="secondary">Save</button>
+      <button id="set-default" class="secondary">Default</button>
+      <button id="delete-profile" class="secondary danger">Delete</button>
+    </div>
+    <label for="personality">Personality</label>
+    <select id="personality"></select>
+    <label for="bubble-opacity">Bubble background <span id="bubble-opacity-value">100%</span></label>
+    <input type="range" id="bubble-opacity" min="0" max="100" value="100" step="5">
+    <label for="text-opacity">Text + buttons <span id="text-opacity-value">100%</span></label>
+    <input type="range" id="text-opacity" min="0" max="100" value="100" step="5">
+    <label for="tts-model">TTS engine</label>
+    <select id="tts-model">
+      <option value="breeze">breeze</option>
+      <option value="omnivoice">omnivoice</option>
+      <option value="lux">lux</option>
+    </select>
+    <label for="voice">Clone</label>
+    <select id="voice"></select>
+    <label for="instruction">Design</label>
+    <select id="instruction"></select>
+    <label for="mode">Mode</label>
+    <select id="mode">
+      <option value="chunked">chunked</option>
+      <option value="full">full</option>
+    </select>
+    <label for="settings-model">Model</label>
+    <select id="settings-model"></select>
+    <label class="checkbox-label">
+      <input type="checkbox" id="audio-toggle" checked>
+      Generate audio
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" id="video-toggle" checked>
+      Generate avatar video
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" id="idle-toggle" checked>
+      Show idle avatar
+    </label>
+    <label class="checkbox-label">
+      <input type="checkbox" id="autohide-toggle" checked>
+      Auto hide chat while thinking
+    </label>
+    </div>
+    <div class="settings-footer">
+    <button id="clear-history" class="secondary danger">Clear history</button>
+    <button id="clear-memory" class="secondary danger">Clear memory</button>
+    <button id="logout-btn" class="secondary danger">Logout</button>
+    <button id="settings-close" class="secondary">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="image-modal" class="modal" style="display:none">
+  <div class="image-modal-content">
+    <img id="image-modal-img" src="" alt="image">
+    <button id="image-modal-close" class="secondary">Close</button>
+  </div>
+</div>
+
+<div id="skills-modal" class="modal" style="display:none">
+  <div class="modal-content skills-modal-content">
+    <h2>Skills</h2>
+    <div id="skills-list" class="skills-list"></div>
+    <div class="skills-actions">
+      <button id="skills-ok" class="secondary">OK</button>
+      <button id="skills-cancel" class="secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<video id="avatar" class="avatar" playsinline loop muted src="/static/idle.mp4" disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback"></video>
+<video id="avatar-talk" class="avatar" playsinline preload="auto" style="display:none" disablepictureinpicture controlslist="nodownload nofullscreen noremoteplayback"></video>
+<script src="/static/app.js?v=65"></script>
+</body>
+</html>

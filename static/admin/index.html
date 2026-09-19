@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yvette - Voice Avatar AI</title>
+<link rel="stylesheet" href="/static/admin/style.css?v=11">
+</head>
+<body>
+<header>
+  <h1>Yvette - Voice Avatar AI</h1>
+  <div id="health" class="health">checking...</div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="stt">STT</button>
+  <button class="tab" data-tab="tts">TTS</button>
+  <button class="tab" data-tab="avatars">Avatars</button>
+  <button class="tab" data-tab="personalities">Personalities</button>
+  <button class="tab" data-tab="llms">LLMs</button>
+  <button class="tab" data-tab="general">General</button>
+  <button class="tab" data-tab="status">Status</button>
+  <button class="tab" data-tab="profiles">Profiles</button>
+</nav>
+
+<main>
+  <!-- ============ STT ============ -->
+  <section class="tab-panel active" id="panel-stt">
+    <aside class="side-menu">
+      <div class="side-title">Speech to Text</div>
+      <button class="side-item active" data-stt-view="settings">Settings</button>
+      <button class="side-item" data-stt-view="download">Download</button>
+    </aside>
+    <div class="tab-content">
+      <div id="stt-settings" class="stt-view active">
+        <h2>Whisper Settings</h2>
+        <div class="row">
+          <div class="field grow">
+            <label>Model <span class="hint">(only installed models shown)</span></label>
+            <select id="stt-model"></select>
+          </div>
+          <div class="field">
+            <label>Language</label>
+<select id="stt-language"></select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label>Device</label>
+            <select id="stt-device">
+              <option value="cuda">cuda (GPU)</option>
+              <option value="cpu">cpu</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Compute type</label>
+            <select id="stt-compute">
+              <option value="float16">float16</option>
+              <option value="float32">float32</option>
+              <option value="int8">int8</option>
+              <option value="int8_float16">int8_float16</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Beam size</label>
+            <input type="number" id="stt-beam" value="5" min="1" max="10">
+          </div>
+        </div>
+        <div class="field">
+          <label>Enable Whisper (STT)</label>
+          <label class="checkbox-label"><input type="checkbox" id="stt-enabled"> enabled (autoloads on first request)</label>
+        </div>
+        <div class="row actions">
+          <button id="stt-save" class="primary">Save</button>
+          <button id="stt-reset" class="secondary">Reset to default</button>
+          <span id="stt-status" class="status"></span>
+        </div>
+        <div class="row actions">
+          <button id="stt-load" class="secondary">Load model</button>
+          <button id="stt-unload" class="secondary">Unload model</button>
+          <span id="stt-model-status" class="status"></span>
+        </div>
+      </div>
+      <div id="stt-download" class="stt-view">
+        <h2>Whisper Models</h2>
+        <div id="stt-models" class="profiles"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ TTS ============ -->
+  <section class="tab-panel" id="panel-tts">
+    <aside class="side-menu">
+      <div class="side-title">Text to Speech</div>
+      <button class="side-item active" data-tts-view="models">Loaded models</button>
+      <button class="side-item" data-tts-view="test">Test</button>
+      <button class="side-item" data-tts-view="cloning">Voice cloning</button>
+      <button class="side-item" data-tts-view="design">Voice design</button>
+      <button class="side-item" data-tts-view="engines">Engine settings</button>
+      <button class="side-item" data-tts-view="general">General</button>
+    </aside>
+    <div class="tab-content">
+      <div id="tts-models" class="stt-view active">
+        <section class="card">
+          <h2>Loaded Models <span class="hint">(unload to free VRAM)</span></h2>
+          <div id="models-list" class="models-list"></div>
+        </section>
+        <section class="card">
+          <h2>Auto-unload <span class="hint">(free VRAM when idle)</span></h2>
+          <div class="field">
+            <label>Unload idle models after (minutes) <span class="hint">(0 = never)</span></label>
+            <input type="number" id="unload-idle" value="60" min="0">
+          </div>
+          <div class="field">
+            <label>Unload other models before loading a new one <span class="hint">(run only one TTS model at a time)</span></label>
+            <label class="checkbox-label"><input type="checkbox" id="unload-others"> enabled</label>
+          </div>
+          <div class="row actions">
+            <button id="general-save" class="primary">Save</button>
+            <span id="general-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+
+      <div id="tts-test" class="stt-view">
+        <section class="card">
+          <h2>Text to Speech</h2>
+          <div class="row">
+            <div class="field">
+              <label>Model</label>
+              <select id="model"></select>
+            </div>
+            <div class="field">
+              <label>Voice</label>
+              <select id="voice"></select>
+            </div>
+            <div class="field" id="instr-field" style="display:none">
+              <label>Instruction</label>
+              <select id="instruction"></select>
+            </div>
+            <div class="field">
+              <label>Format</label>
+              <select id="format">
+                <option value="wav">wav</option>
+                <option value="ogg">ogg</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Return</label>
+              <select id="return-type">
+                <option value="full">full (combined)</option>
+                <option value="chunked">chunked (stream)</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Text</label>
+            <textarea id="text" rows="4" placeholder="Type or paste text to speak...">Hello, this is a test of the TTS server.</textarea>
+          </div>
+          <div id="breeze-opts" style="display:none">
+            <div class="field">
+              <label>Instruction (manual) <span class="hint">(type here to iterate; overrides the dropdown)</span></label>
+              <input type="text" id="instruction-text" placeholder="e.g. A warm, thoughtful young woman with a clear, calm delivery.">
+            </div>
+            <div class="row">
+              <div class="field">
+                <label>CFG scale (design/direction)</label>
+                <input type="number" id="cfg" value="4" step="0.5" min="0" max="10">
+              </div>
+              <div class="field">
+                <label>Seed (blank = random)</label>
+                <input type="number" id="seed" placeholder="random">
+              </div>
+            </div>
+          </div>
+          <div class="row actions">
+            <button id="generate" class="primary">Generate</button>
+            <span id="gen-status" class="status"></span>
+          </div>
+          <div id="result" class="result" style="display:none">
+            <audio id="player" controls></audio>
+            <div class="meta" id="result-meta"></div>
+            <a id="download" class="download" download>Download</a>
+          </div>
+          <div id="chunk-result" class="result" style="display:none">
+            <div id="chunk-progress" class="status"></div>
+            <div id="chunk-list"></div>
+          </div>
+        </section>
+      </div>
+
+      <div id="tts-cloning" class="stt-view">
+        <section class="card" id="clone-card">
+          <h2>Voice Cloning <span class="hint">(Breeze - reference audio + exact transcript)</span></h2>
+          <div class="row">
+            <div class="field grow">
+              <label>Profile name</label>
+              <input type="text" id="clone-name" placeholder="e.g. Martin">
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Source</label>
+              <div class="btn-group">
+                <label class="secondary file-btn">Upload file
+                  <input type="file" id="upload-file" accept="audio/*,video/*" hidden>
+                </label>
+              </div>
+            </div>
+            <div class="field">
+              <label>Reference audio</label>
+              <div id="ref-status" class="status">none</div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Engines <span class="hint">(which TTS engines can use this voice)</span></label>
+            <div class="btn-group" id="clone-engines">
+              <label class="checkbox-label"><input type="checkbox" value="breeze" checked> breeze</label>
+              <label class="checkbox-label"><input type="checkbox" value="omnivoice"> omnivoice</label>
+              <label class="checkbox-label"><input type="checkbox" value="lux"> lux</label>
+              <label class="checkbox-label"><input type="checkbox" value="kokoro"> kokoro</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Transcript <span class="hint">(exact words of the reference audio - auto-filled by Whisper, editable)</span></label>
+            <textarea id="transcript" rows="3" placeholder="Auto-transcribed, or type the exact words..."></textarea>
+          </div>
+          <div class="row actions">
+            <button id="transcribe-btn" class="secondary">Transcribe with Whisper</button>
+            <button id="save-clone" class="primary">Save voice profile</button>
+            <button id="clone-cancel" class="secondary" style="display:none">Cancel</button>
+            <span id="clone-status" class="status"></span>
+          </div>
+        </section>
+        <section class="card">
+          <h2>Clone Profiles</h2>
+          <div id="profiles-clones" class="profiles"></div>
+        </section>
+      </div>
+
+      <div id="tts-design" class="stt-view">
+        <section class="card" id="design-card">
+          <h2>Voice Design <span class="hint">(Breeze - voice from a text description, no reference audio)</span></h2>
+          <div class="row">
+            <div class="field grow">
+              <label>Profile name</label>
+              <input type="text" id="design-name" placeholder="e.g. Narrator">
+            </div>
+          </div>
+          <div class="field">
+            <label>Engines <span class="hint">(which TTS engines can use this voice)</span></label>
+            <div class="btn-group" id="design-engines">
+              <label class="checkbox-label"><input type="checkbox" value="breeze" checked> breeze</label>
+              <label class="checkbox-label"><input type="checkbox" value="omnivoice"> omnivoice</label>
+              <label class="checkbox-label"><input type="checkbox" value="lux"> lux</label>
+              <label class="checkbox-label"><input type="checkbox" value="kokoro"> kokoro</label>
+            </div>
+          </div>
+          <div class="field">
+            <label>Description</label>
+            <textarea id="design-desc" rows="3" placeholder="e.g. A warm, thoughtful young woman with a clear voice and a calm, reflective delivery."></textarea>
+          </div>
+          <div class="row actions">
+            <button id="save-design" class="primary">Save voice profile</button>
+            <button id="design-cancel" class="secondary" style="display:none">Cancel</button>
+            <span id="design-status" class="status"></span>
+          </div>
+        </section>
+        <section class="card">
+          <h2>Design Profiles</h2>
+          <div id="profiles-designs" class="profiles"></div>
+        </section>
+      </div>
+
+      <div id="tts-engines" class="stt-view">
+        <h2>Engine Settings</h2>
+        <div id="engine-settings"></div>
+        <div class="row actions">
+          <button id="engines-save" class="primary">Save</button>
+          <span id="engines-status" class="status"></span>
+        </div>
+      </div>
+
+      <div id="tts-general" class="stt-view">
+        <h2>General TTS Settings</h2>
+        <section class="card">
+          <div class="field">
+            <label>Enable TTS <span class="hint">(off = text-only chat)</span></label>
+            <label class="checkbox-label"><input type="checkbox" id="ttsg-enabled"> enabled</label>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Min chunk chars</label>
+              <input type="number" id="ttsg-min-chunk" min="20" step="10">
+            </div>
+            <div class="field">
+              <label>Max chunk chars</label>
+              <input type="number" id="ttsg-max-chunk" min="50" step="10">
+            </div>
+            <div class="field">
+              <label>Default mode</label>
+              <select id="ttsg-mode">
+                <option value="chunked">chunked</option>
+                <option value="full">full</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Output format</label>
+              <select id="ttsg-format">
+                <option value="ogg">ogg</option>
+                <option value="wav">wav</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Gain (dB)</label>
+              <input type="number" id="ttsg-gain" step="0.5" min="0" max="30">
+            </div>
+            <div class="field">
+              <label>Sample rate</label>
+              <input type="number" id="ttsg-sample-rate" min="8000" step="1000">
+            </div>
+            <div class="field">
+              <label>Audio TTL (hours)</label>
+              <input type="number" id="ttsg-audio-ttl" min="0" step="1">
+            </div>
+          </div>
+          <div class="subhead">Default voice</div>
+          <div class="row">
+            <div class="field">
+              <label>Default engine</label>
+              <select id="ttsg-engine">
+                <option value="breeze">breeze</option>
+                <option value="kokoro">kokoro</option>
+                <option value="omnivoice">omnivoice</option>
+                <option value="lux">lux</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Default voice clone <span class="hint">(used by engines that support cloning)</span></label>
+              <select id="ttsg-voice"></select>
+            </div>
+            <div class="field">
+              <label>Default voice design</label>
+              <select id="ttsg-design"></select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Default cfg scale</label>
+            <input type="number" id="ttsg-cfg-scale" step="0.5" min="0" max="10">
+          </div>
+          <div class="field">
+            <label>Default instruction <span class="hint">(free-text voice style)</span></label>
+            <textarea id="ttsg-instruction" rows="3"></textarea>
+          </div>
+          <div class="row actions">
+            <button id="ttsg-save" class="primary">Save</button>
+            <span id="ttsg-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============ AVATARS ============ -->
+  <section class="tab-panel" id="panel-avatars">
+    <aside class="side-menu">
+      <div class="side-title">Avatars</div>
+      <button class="side-item active" data-avatar-view="defaults">Defaults</button>
+      <button class="side-item" data-avatar-view="avatars">Avatars</button>
+      <button class="side-item" data-avatar-view="general">General</button>
+    </aside>
+    <div class="tab-content">
+      <div id="avatar-defaults" class="stt-view active">
+        <h2>Avatar Defaults</h2>
+        <section class="card">
+          <div class="field">
+            <label>Head motion (talking) <span class="hint">1.0 = default, higher = more head movement</span></label>
+            <input type="number" id="avatar-head-alpha" step="0.05" min="0.5" max="3">
+          </div>
+          <div class="field">
+            <label>Idle motion (breathing) <span class="hint">1.0 = default, higher = more idle movement</span></label>
+            <input type="number" id="avatar-idle-alpha" step="0.05" min="0.5" max="3">
+          </div>
+          <div class="field">
+            <label>Idle length (seconds)</label>
+            <input type="number" id="avatar-idle-length" min="5" max="120">
+          </div>
+          <div class="row actions">
+            <button id="avatar-defaults-save" class="primary">Save</button>
+            <span id="avatar-defaults-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+      <div id="avatar-list" class="stt-view">
+        <h2>Avatars</h2>
+        <div class="row actions">
+          <button id="avatar-add" class="primary">Add avatar</button>
+          <span id="avatar-list-status" class="status"></span>
+        </div>
+        <div id="avatar-admin-grid" class="avatar-grid"></div>
+      </div>
+
+      <div id="avatar-general" class="stt-view">
+        <h2>Avatar General Settings</h2>
+        <section class="card">
+          <div class="field">
+            <label>Video TTL (hours) <span class="hint">(avatar videos older than this are cleaned up, 0 = keep forever)</span></label>
+            <input type="number" id="avg-video-ttl" min="0" step="1">
+          </div>
+          <div class="row actions">
+            <button id="avg-save" class="primary">Save</button>
+            <span id="avg-status" class="status"></span>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Video generation (DITTO)</h2>
+          <div class="field">
+            <label>Enable video generation</label>
+            <label class="checkbox-label"><input type="checkbox" id="ditto-enabled"> enabled</label>
+          </div>
+          <div class="row actions">
+            <button id="ditto-load" class="secondary">Load DITTO</button>
+            <button id="ditto-unload" class="secondary">Unload DITTO</button>
+            <span id="ditto-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PERSONALITIES ============ -->
+  <section class="tab-panel" id="panel-personalities">
+    <aside class="side-menu">
+      <div class="side-title">Personalities</div>
+      <button class="side-item active" data-pers-view="defaults">Defaults</button>
+      <button class="side-item" data-pers-view="personalities">Personalities</button>
+    </aside>
+    <div class="tab-content">
+      <div id="pers-defaults" class="stt-view active">
+        <h2>Default prompt</h2>
+        <section class="card">
+          <div class="field">
+            <label>Default system prompt <span class="hint">pre-filled when adding a new personality</span></label>
+            <textarea id="pers-default-prompt" rows="16" placeholder="You are a helpful, friendly voice assistant."></textarea>
+          </div>
+          <div class="row actions">
+            <button id="pers-default-save" class="primary">Save</button>
+            <span id="pers-default-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+      <div id="pers-list" class="stt-view">
+        <h2>Personalities</h2>
+        <div class="row actions">
+          <button id="pers-add" class="primary">Add personality</button>
+          <span id="pers-list-status" class="status"></span>
+        </div>
+        <div id="pers-grid" class="profiles"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LLMS ============ -->
+  <section class="tab-panel" id="panel-llms">
+    <aside class="side-menu">
+      <div class="side-title">LLMs</div>
+      <button class="side-item active" data-llm-view="defaults">Defaults</button>
+      <button class="side-item" data-llm-view="models">Models</button>
+      <button class="side-item" data-llm-view="add">Add model</button>
+    </aside>
+    <div class="tab-content">
+      <div id="llm-defaults" class="stt-view active">
+        <h2>LLM Defaults</h2>
+        <section class="card">
+          <div class="row">
+            <div class="field">
+              <label>Context length (tokens)</label>
+              <input type="number" id="llm-context" min="512" step="512">
+            </div>
+            <div class="field">
+              <label>Max history (tokens)</label>
+              <input type="number" id="llm-history" min="512" step="512">
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Temperature</label>
+              <input type="number" id="llm-temp" step="0.1" min="0" max="2">
+            </div>
+            <div class="field">
+              <label>Max tokens (response)</label>
+              <input type="number" id="llm-maxtokens" min="256" step="256">
+            </div>
+          </div>
+          <div class="field">
+            <label>Thinking mode</label>
+            <label class="checkbox-label"><input type="checkbox" id="llm-thinking"> enable reasoning</label>
+          </div>
+          <div class="row actions">
+            <button id="llm-defaults-save" class="primary">Save</button>
+            <span id="llm-defaults-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+
+      <div id="llm-models" class="stt-view">
+        <h2>Models</h2>
+        <div id="llm-models-list" class="profiles"></div>
+      </div>
+
+      <div id="llm-add" class="stt-view">
+        <h2>Add model</h2>
+        <section class="card">
+          <div class="field">
+            <label>V1 base URL <span class="hint">e.g. http://192.168.1.223:7777/v1</span></label>
+            <input type="text" id="llm-add-url" placeholder="http://host:port/v1">
+          </div>
+          <div class="row actions">
+            <button id="llm-fetch" class="secondary">Fetch models</button>
+            <span id="llm-fetch-status" class="status"></span>
+          </div>
+          <div class="field">
+            <label>Model</label>
+            <select id="llm-add-model-select"><option value="">(fetch models first)</option></select>
+          </div>
+          <div class="field">
+            <label>Name <span class="hint">short label shown in the talk UI</span></label>
+            <input type="text" id="llm-add-name" placeholder="e.g. 8b">
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Context length (tokens)</label>
+              <input type="number" id="llm-add-context" min="512" step="512">
+            </div>
+            <div class="field">
+              <label>Max history (tokens)</label>
+              <input type="number" id="llm-add-history" min="512" step="512">
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>Temperature</label>
+              <input type="number" id="llm-add-temp" step="0.1" min="0" max="2">
+            </div>
+            <div class="field">
+              <label>Max tokens (response)</label>
+              <input type="number" id="llm-add-maxtokens" min="256" step="256">
+            </div>
+          </div>
+          <div class="field">
+            <label>Thinking mode</label>
+            <label class="checkbox-label"><input type="checkbox" id="llm-add-thinking"> enable reasoning</label>
+          </div>
+          <div class="field">
+            <label>API token <span class="hint">(for cloud models, leave empty for local)</span></label>
+            <input type="password" id="llm-add-token" placeholder="optional">
+          </div>
+          <div class="row actions">
+            <button id="llm-add-save" class="primary">Save model</button>
+            <span id="llm-add-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ GENERAL ============ -->
+  <section class="tab-panel" id="panel-general">
+    <aside class="side-menu">
+      <div class="side-title">General</div>
+      <button class="side-item active" data-gen-view="memory">Memory</button>
+      <button class="side-item" data-gen-view="server">Server</button>
+      <button class="side-item" data-gen-view="auth">Auth</button>
+      <button class="side-item" data-gen-view="toolcalling">Toolcalling</button>
+    </aside>
+    <div class="tab-content">
+      <div id="gen-memory" class="stt-view active">
+        <h2>Memory</h2>
+        <section class="card">
+          <div class="row">
+            <div class="field grow"><label>Brain directory</label><input type="text" id="mem-brain-dir"></div>
+            <div class="field grow"><label>Index DB path</label><input type="text" id="mem-db-path"></div>
+          </div>
+          <div class="row">
+            <div class="field grow"><label>Embedding model</label><input type="text" id="mem-embed-model"></div>
+            <div class="field"><label>Embedding device</label>
+              <select id="mem-embed-device"><option value="cpu">cpu</option><option value="cuda">cuda</option></select>
+            </div>
+          </div>
+          <div class="row">
+            <div class="field"><label>Top K</label><input type="number" id="mem-top-k" min="1" max="50"></div>
+            <div class="field"><label>Min score</label><input type="number" id="mem-min-score" step="0.05" min="0" max="1"></div>
+            <div class="field"><label>Max chars</label><input type="number" id="mem-max-chars" min="100"></div>
+            <div class="field"><label>Body chars</label><input type="number" id="mem-body-chars" min="50"></div>
+            <div class="field"><label>Curate every (turns)</label><input type="number" id="mem-curate-every" min="1"></div>
+            <div class="field"><label>History max turns</label><input type="number" id="mem-history-max" min="1"></div>
+          </div>
+          <div class="row actions">
+            <button id="mem-save" class="primary">Save</button>
+            <span id="mem-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+
+      <div id="gen-server" class="stt-view">
+        <h2>Server</h2>
+        <section class="card">
+          <div class="row">
+            <div class="field"><label>Host</label><input type="text" id="srv-host"></div>
+            <div class="field"><label>Port</label><input type="number" id="srv-port" min="1" max="65535"></div>
+          </div>
+          <div class="field">
+            <label>SSL (HTTPS)</label>
+            <label class="checkbox-label"><input type="checkbox" id="srv-https"> enable HTTPS</label>
+          </div>
+          <div class="row actions">
+            <button id="srv-cert" class="secondary">Generate self-signed cert</button>
+            <span id="srv-cert-status" class="status"></span>
+          </div>
+          <div class="field">
+            <label>API token</label>
+            <div class="row actions" style="margin-bottom:0">
+              <input type="text" id="srv-token" style="flex:1">
+              <button id="srv-token-gen" class="secondary">Generate new</button>
+            </div>
+          </div>
+          <div class="row actions">
+            <button id="srv-save" class="primary">Save</button>
+            <span id="srv-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+
+      <div id="gen-auth" class="stt-view">
+        <h2>Auth</h2>
+        <section class="card">
+          <div class="field">
+            <label>Username</label>
+            <input type="text" id="auth-username">
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <div class="row actions" style="margin-bottom:0">
+              <input type="text" id="auth-password" style="flex:1" placeholder="leave empty to keep current">
+              <button id="auth-pass-gen" class="secondary">Generate new</button>
+            </div>
+          </div>
+          <div class="field">
+            <label>Hugging Face API token <span class="hint">(for gated model downloads)</span></label>
+            <input type="text" id="auth-hf-token" placeholder="hf_...">
+          </div>
+          <div class="row actions">
+            <button id="auth-save" class="primary">Save</button>
+            <span id="auth-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+
+      <div id="gen-toolcalling" class="stt-view">
+        <h2>Toolcalling</h2>
+        <section class="card">
+          <div class="field">
+            <label>Enable tool calling <span class="hint">(lets the LLM use tools like memory, weather, etc.)</span></label>
+            <label class="checkbox-label"><input type="checkbox" id="tc-enabled"> enabled</label>
+          </div>
+          <div class="row actions">
+            <button id="tc-save" class="primary">Save</button>
+            <span id="tc-status" class="status"></span>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ STATUS ============ -->
+  <section class="tab-panel" id="panel-status">
+    <aside class="side-menu">
+      <div class="side-title">Status</div>
+      <button class="side-item active" data-status-view="health">Health</button>
+      <button class="side-item" data-status-view="logs">Logs</button>
+    </aside>
+    <div class="tab-content">
+      <div id="status-health" class="stt-view active">
+        <h2>System Health</h2>
+        <div class="row actions">
+          <button id="status-refresh" class="secondary">Refresh</button>
+          <span id="status-gpu" class="status"></span>
+        </div>
+        <div id="status-cards"></div>
+      </div>
+      <div id="status-logs" class="stt-view">
+        <h2>Logs</h2>
+        <section class="card">
+          <div class="field">
+            <label>Keep logs for (hours) <span class="hint">(0 = keep forever)</span></label>
+            <input type="number" id="logs-retention" min="0" step="1">
+          </div>
+          <div class="row actions">
+            <button id="logs-save" class="primary">Save</button>
+            <span id="logs-save-status" class="status"></span>
+          </div>
+        </section>
+        <div class="row actions">
+          <button id="logs-clear" class="danger">Delete log</button>
+          <button id="logs-reload" class="secondary">Reload</button>
+          <span id="logs-status" class="status"></span>
+        </div>
+        <pre id="logs-output" class="log-output"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PROFILES ============ -->
+  <section class="tab-panel" id="panel-profiles">
+    <div class="tab-content">
+      <h2>Profiles</h2>
+      <div class="row actions">
+        <button id="prof-add" class="primary">Add profile</button>
+        <span id="prof-list-status" class="status"></span>
+      </div>
+      <div id="prof-grid" class="profiles"></div>
+    </div>
+  </section>
+</main>
+
+<div id="avatar-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <h2 id="avatar-modal-title">Add avatar</h2>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="avatar-modal-name" placeholder="e.g. Alice">
+    </div>
+    <div class="field">
+      <label>Image <span class="hint" id="avatar-file-hint">square image works best</span></label>
+      <input type="file" id="avatar-file" accept="image/*">
+    </div>
+    <div class="field">
+      <label>Head motion (talking) <span class="hint">blank = use default</span></label>
+      <input type="number" id="avatar-modal-head-alpha" step="0.05" min="0.5" max="3" placeholder="default">
+    </div>
+    <div class="field">
+      <label>Idle motion (breathing) <span class="hint">blank = use default</span></label>
+      <input type="number" id="avatar-modal-idle-alpha" step="0.05" min="0.5" max="3" placeholder="default">
+    </div>
+    <div class="field">
+      <label>Idle length (seconds) <span class="hint">blank = use default</span></label>
+      <input type="number" id="avatar-modal-idle-length" min="5" max="120" placeholder="default">
+    </div>
+    <div class="row actions">
+      <button id="avatar-modal-save" class="primary">Save</button>
+      <button id="avatar-modal-cancel" class="secondary">Cancel</button>
+      <span id="avatar-modal-status" class="status"></span>
+    </div>
+  </div>
+</div>
+
+<div id="preview-modal" class="modal" style="display:none">
+  <div class="modal-content preview-modal-content">
+    <h2>Idle preview</h2>
+    <video id="preview-video" controls autoplay loop muted></video>
+    <button id="preview-close" class="secondary">Close</button>
+  </div>
+</div>
+
+<div id="pers-modal" class="modal" style="display:none">
+  <div class="modal-content pers-modal-content">
+    <h2 id="pers-modal-title">Add personality</h2>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="pers-modal-name" placeholder="e.g. work">
+    </div>
+    <div class="field">
+      <label>System prompt</label>
+      <textarea id="pers-modal-prompt" rows="14" placeholder="You are..."></textarea>
+    </div>
+    <div class="row actions">
+      <button id="pers-modal-save" class="primary">Save</button>
+      <button id="pers-modal-cancel" class="secondary">Cancel</button>
+      <span id="pers-modal-status" class="status"></span>
+    </div>
+  </div>
+</div>
+
+<div id="llm-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <h2 id="llm-modal-title">Edit model</h2>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="llm-modal-name" placeholder="e.g. 8b">
+    </div>
+    <div class="field">
+      <label>Base URL</label>
+      <input type="text" id="llm-modal-url" placeholder="http://host:port/v1">
+    </div>
+    <div class="field">
+      <label>Model</label>
+      <input type="text" id="llm-modal-model">
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Context length (tokens)</label>
+        <input type="number" id="llm-modal-context" min="512" step="512">
+      </div>
+      <div class="field">
+        <label>Max history (tokens)</label>
+        <input type="number" id="llm-modal-history" min="512" step="512">
+      </div>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Temperature</label>
+        <input type="number" id="llm-modal-temp" step="0.1" min="0" max="2">
+      </div>
+      <div class="field">
+        <label>Max tokens (response)</label>
+        <input type="number" id="llm-modal-maxtokens" min="256" step="256">
+      </div>
+    </div>
+    <div class="field">
+      <label>Thinking mode</label>
+      <label class="checkbox-label"><input type="checkbox" id="llm-modal-thinking"> enable reasoning</label>
+    </div>
+    <div class="field">
+      <label>API token <span class="hint">(for cloud models, leave empty for local)</span></label>
+      <input type="password" id="llm-modal-token" placeholder="optional">
+    </div>
+    <div class="row actions">
+      <button id="llm-modal-save" class="primary">Save</button>
+      <button id="llm-modal-cancel" class="secondary">Cancel</button>
+      <span id="llm-modal-status" class="status"></span>
+    </div>
+  </div>
+</div>
+
+<div id="prof-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <h2 id="prof-modal-title">Add profile</h2>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="prof-name" placeholder="e.g. work">
+    </div>
+    <div class="row">
+      <div class="field grow">
+        <label>Personality</label>
+        <select id="prof-personality"></select>
+      </div>
+      <div class="field grow">
+        <label>LLM model</label>
+        <select id="prof-model"></select>
+      </div>
+    </div>
+    <div class="row">
+      <div class="field grow">
+        <label>TTS engine</label>
+        <select id="prof-tts"></select>
+      </div>
+      <div class="field grow">
+        <label>Mode</label>
+        <select id="prof-mode">
+          <option value="chunked">chunked</option>
+          <option value="full">full</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Voice clone <span class="hint">(only if the engine supports cloning)</span></label>
+      <select id="prof-voice"></select>
+    </div>
+    <div class="field">
+      <label>Voice design <span class="hint">(only if the engine supports design)</span></label>
+      <select id="prof-design"></select>
+    </div>
+    <div class="field">
+      <label>Test voice <span class="hint">(uses the engine + voice/design selected above)</span></label>
+      <textarea id="prof-test-text" rows="2">hello, testing this voice. How are you today?</textarea>
+    </div>
+    <div class="row actions">
+      <button id="prof-test-play" class="secondary">Play</button>
+      <audio id="prof-test-audio" controls style="display:none"></audio>
+      <span id="prof-test-status" class="status"></span>
+    </div>
+    <div class="row actions">
+      <button id="prof-save" class="primary">Save</button>
+      <button id="prof-cancel" class="secondary">Cancel</button>
+      <span id="prof-status" class="status"></span>
+    </div>
+  </div>
+</div>
+
+<script src="/static/admin/app.js?v=39"></script>
+</body>
+</html>

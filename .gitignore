@@ -1,0 +1,61 @@
+# ===== install tooling / engines =====
+TensorRT/*
+!TensorRT/README.md
+engines/
+
+# ===== python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+venv/
+env/
+.env/
+
+# ===== app runtime / generated =====
+output/
+logs/
+server.log
+server.err.log
+brain/
+memory/
+history/
+files/
+avatar/
+
+# ===== user-created content (configured via admin UI) =====
+personality.md
+personalities/
+profiles.json
+skills/
+voices/ref_audio/
+voices/profiles.json
+static/avatars/*
+!static/avatars/default.jpg
+
+# ===== generated settings =====
+avatars_settings.json
+
+# ===== ssl (generated on demand) =====
+cert.pem
+key.pem
+
+# ===== model weights (downloaded, never committed) =====
+*.engine
+*.onnx
+*.pkl
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.gguf
+*.bin
+*.h5
+checkpoints/
+models/
+
+# ===== os / editor =====
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

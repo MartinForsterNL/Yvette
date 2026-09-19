@@ -1,0 +1,31 @@
+# voice-ai — orchestrator dependencies (Python 3.10+)
+# The heavy model backends (DITTO, Breeze, omnivoice, lux) run in their own
+# venvs and are spawned as subprocesses - they are NOT listed here.
+
+# web
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+httpx>=0.27
+
+# audio
+numpy>=1.24
+soundfile>=0.12
+
+# config
+PyYAML>=6.0
+
+# TTS (kokoro, in-process CPU)
+kokoro>=0.9.0
+
+# STT (Whisper, in-process)
+faster-whisper>=1.0
+
+# memory embeddings
+sentence-transformers>=3.0
+
+# model downloads
+huggingface_hub>=0.23
+
+# torch (kokoro + embeddings)
+torch>=2.0
