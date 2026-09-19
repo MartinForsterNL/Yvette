@@ -30,6 +30,8 @@ the personality that feels right. Make it yours.
 - An NVIDIA GPU (CUDA-capable). Ampere or newer (RTX 30/40/50 series) is
   recommended. 12 GB VRAM minimum.
 - About 60 GB of free disk space
+- An external LLM server (LM Studio, Ollama, llama.cpp, vLLM, etc.) running a
+  chat model, exposed over an OpenAI-compatible API.
 
 10 - 12 GB works pretty nicely but 24 GB VRAM is recommended to get the best quality.
 
