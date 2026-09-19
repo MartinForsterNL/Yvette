@@ -189,6 +189,26 @@ Copy-Item (Join-Path $Servers "lux_server.py") (Join-Path $lux "lux_server.py") 
 Ok "lux_server.py placed"
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+Step "voice-ai app (orchestrator)"
+
+$appVenv = Join-Path $Root "venv"
+if (-not (Test-Path (Join-Path $appVenv "Scripts\python.exe"))) { & python -m venv $appVenv }
+$appPy = Join-Path $appVenv "Scripts\python.exe"
+
+& $appPy -m pip install --upgrade pip | Out-Null
+& $appPy -m pip install -r (Join-Path $Root "requirements.txt")
+Ok "app python deps installed"
+
+Step "app post-install (config tokens + model pre-download)"
+& $appPy (Join-Path $Root "app_install.py") $HF_TOKEN
+if ($LASTEXITCODE -ne 0) {
+    Warn "app post-install had an issue - models will download lazily on first run"
+} else {
+    Ok "app installed (api_token generated, models pre-downloaded)"
+}
+
+# ---------------------------------------------------------------------------
 Step "Done"
 
 Write-Host ""
@@ -198,4 +218,5 @@ Write-Host "  breeze/     TTS"
 Write-Host "  omnivoice/  TTS"
 Write-Host "  lux/        TTS"
 Write-Host ""
-Write-Host "The main voice-ai app is added separately (see the project README)." -ForegroundColor Yellow
+Write-Host ""
+Write-Host "The app is installed at the repo root. Run start.bat to launch it." -ForegroundColor Green

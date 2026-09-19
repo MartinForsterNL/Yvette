@@ -154,6 +154,9 @@ It will:
    cvt_onnx_to_trt.py. This is why the TensorRT and cuDNN steps in Part 1 are
    required: the conversion needs them.
 8. Copy this project's wrapper servers (servers/) into each backend folder.
+9. Create the app venv and install its Python dependencies (requirements.txt).
+10. Generate a random api_token and write your HF token into config.yaml.
+11. Pre-download the internal models (Whisper, Kokoro, embeddings).
 
 ---
 
@@ -170,6 +173,42 @@ engines/
 The repo's servers/ folder holds the three wrapper servers that the installer
 copies into the backends above (ditto_server.py, omnivoice_server.py,
 lux_server.py). These are this project's own code and are tracked in git.
+
+---
+
+## Part 4 - After install: LLM and first boot
+
+### 1. Point it at your LLM
+
+The app ships with a dummy LLM (http://localhost:1234/v1, model
+"your-model-name"). Set your real LLM one of two ways:
+
+- Admin UI: open http://localhost:8900/admin -> LLMs tab -> add/edit a model.
+- Or edit config.yaml's llm section (base_url + model).
+
+The LLM is any OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, etc.).
+
+### 2. Change the admin password
+
+The app boots with Admin / Testing123. Log in and change the password in
+General > Auth.
+
+### 3. Rotate the API key / enable HTTPS
+
+install.ps1 already generated a random api_token. To rotate it (or enable HTTPS),
+open General > Server and use "Generate new API key" and "Generate SSL cert".
+The SSL cert is created on demand - it is never shipped.
+
+### 4. Run it
+
+```
+start.bat
+```
+
+Then open http://localhost:8900 (talk UI) and http://localhost:8900/admin
+(backend admin).
+
+---
 
 ## Notes
 
