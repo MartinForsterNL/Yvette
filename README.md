@@ -31,9 +31,7 @@ the personality that feels right. Make it yours.
   recommended. 12 GB VRAM minimum.
 - About 60 GB of free disk space
 
-How much VRAM you need depends mostly on the LLM you run. 12 GB is a safe
-minimum; with a smaller LLM (or the LLM on a separate machine) even 10 GB
-can work.
+10 - 12 GB works pretty nicely but 24 GB VRAM is recommended to get the best quality.
 
 The full software prerequisites (Python, CUDA, cuDNN, TensorRT) are listed in
 install-readme.md.

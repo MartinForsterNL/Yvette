@@ -22,8 +22,8 @@ can't clash. This guide covers how to install everything.
 - Windows 10 or 11
 - NVIDIA GPU. Ampere or newer (RTX 30/40/50 series) recommended. Turing (RTX 20 / GTX 16 series) works but the DITTO conversion may need more care.
 - The latest NVIDIA GPU driver (Triton needs a recent driver)
-- 12 GB VRAM minimum. This depends mostly on the LLM: with a smaller LLM (or
-  the LLM on a separate machine) even 10 GB can work.
+- 12 GB VRAM minimum. 10-12 GB works pretty nicely; 24 GB is recommended for
+  the best quality.
 - About 60 GB of free disk space
 - A free NVIDIA developer account (needed to download cuDNN and TensorRT)
 
