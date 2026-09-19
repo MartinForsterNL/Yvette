@@ -138,6 +138,10 @@ installer in a PowerShell window.
 The script is idempotent: you can re-run it and it will skip steps that are
 already done.
 
+Building the DITTO TensorRT engines for your GPU can take a long time. Be
+patient, and ignore the warnings the build script prints as it works. For
+reference, this took about 50 minutes on an RTX 3090.
+
 It will:
 
 1. Verify the prerequisites (Python, git, git-lfs, ffmpeg, and the TensorRT
@@ -176,37 +180,59 @@ lux_server.py). These are this project's own code and are tracked in git.
 
 ---
 
-## Part 4 - After install: LLM and first boot
+## Part 4 - First boot
 
-### 1. Point it at your LLM
-
-The app ships with a dummy LLM (http://localhost:1234/v1, model
-"your-model-name"). Set your real LLM one of two ways:
-
-- Admin UI: open http://localhost:8900/admin -> LLMs tab -> add/edit a model.
-- Or edit config.yaml's llm section (base_url + model).
-
-The LLM is any OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, etc.).
-
-### 2. Change the admin password
-
-The app boots with Admin / Testing123. Log in and change the password in
-General > Auth.
-
-### 3. Rotate the API key / enable HTTPS
-
-install.ps1 already generated a random api_token. To rotate it (or enable HTTPS),
-open General > Server and use "Generate new API key" and "Generate SSL cert".
-The SSL cert is created on demand - it is never shipped.
-
-### 4. Run it
+### 1. Run it
 
 ```
 start.bat
 ```
 
 Then open http://localhost:8900 (talk UI) and http://localhost:8900/admin
-(backend admin).
+(backend admin). Log in with Admin / Testing123.
+
+To stop it later, run stop.bat.
+
+### 2. Point it at your LLM
+
+The app ships with a dummy LLM (http://localhost:1234/v1, model
+"your-model-name"). In the admin UI, open the LLMs tab and add/edit your real
+LLM. It can be any OpenAI-compatible endpoint (LM Studio, Ollama, vLLM, etc.).
+
+### 3. Create a personality
+
+The app has no personalities out of the box. In the admin UI, open the
+Personalities tab and create one - a short system prompt that defines how the
+assistant behaves and speaks.
+
+### 4. Create a voice clone and voice design
+
+Open the Voice cloning and Voice design tabs in the admin UI and create at
+least one of each:
+
+- Voice clone - from a short audio sample of a voice.
+- Voice design - from a text description of a voice.
+
+These are what the TTS engines use to speak (Kokoro has built-in voices, but
+Breeze, OmniVoice, and LuxTTS need a clone; Breeze and OmniVoice also use a
+design).
+
+### 5. Create a profile
+
+Open the Profiles tab in the admin UI and create a profile that combines a
+personality, a voice, and an LLM model. This is what you select when you start
+chatting.
+
+### 6. Change the admin password
+
+Open General > Auth in the admin UI and change the default Admin / Testing123
+password.
+
+### 7. Rotate the API key / enable HTTPS
+
+install.ps1 already generated a random api_token. To rotate it (or enable HTTPS),
+open General > Server and use "Generate new API key" and "Generate SSL cert".
+The SSL cert is created on demand - it is never shipped.
 
 ---
 
