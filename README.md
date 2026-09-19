@@ -34,6 +34,8 @@ the personality that feels right. Make it yours.
   chat model, exposed over an OpenAI-compatible API.
 
 10 - 12 GB works pretty nicely but 24 GB VRAM is recommended to get the best quality.
+This includes the LLM server. Yvette Voice Avatar AI itself can run in about
+6 - 7 GB of VRAM, and the LLM runs on top of that.
 
 The full software prerequisites (Python, CUDA, cuDNN, TensorRT) are listed in
 install-readme.md.
