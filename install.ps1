@@ -71,7 +71,7 @@ $dPy = Join-Path $dVenv "Scripts\python.exe"
 
 & $dPy -m pip install --upgrade pip | Out-Null
 & $dPy -m pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
-& $dPy -m pip install numpy==2.0.1 opencv-python-headless==4.10.0.84 librosa==0.10.2.post1 soundfile==0.13.0 soxr==0.5.0.post1 numba==0.60.0
+& $dPy -m pip install numpy==2.0.1 opencv-python-headless==4.10.0.84 librosa==0.10.2.post1 soundfile==0.13.0 soxr==0.5.0.post1 numba==0.60.0 tqdm filetype scikit-image
 & $dPy -m pip install cuda-python==12.6.2.post1 nvidia-cublas-cu12==12.6.4.1 nvidia-cuda-runtime-cu12==12.1.105 nvidia-cudnn-cu12==9.6.0.74
 & $dPy -m pip install onnx onnxruntime tifffile==2024.12.12 imageio==2.36.1 imageio-ffmpeg==0.5.1 pooch==1.8.2
 & $dPy -m pip install polygraphy colored "triton-windows<3.2"
