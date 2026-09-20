@@ -829,6 +829,33 @@
   </div>
 </div>
 
+<div id="clone-edit-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <h2>Edit voice clone</h2>
+    <div class="field">
+      <label>Name</label>
+      <input type="text" id="clone-edit-name">
+    </div>
+    <div class="field">
+      <label>Transcript <span class="hint">(exact words of the reference audio)</span></label>
+      <textarea id="clone-edit-transcript" rows="5"></textarea>
+    </div>
+    <div class="field">
+      <label>Engines <span class="hint">(which TTS engines can use this voice)</span></label>
+      <div class="btn-group" id="clone-edit-engines">
+        <label class="checkbox-label"><input type="checkbox" value="breeze"> breeze</label>
+        <label class="checkbox-label"><input type="checkbox" value="omnivoice"> omnivoice</label>
+        <label class="checkbox-label"><input type="checkbox" value="lux"> lux</label>
+      </div>
+    </div>
+    <div class="row actions">
+      <button id="clone-edit-save" class="primary">Save</button>
+      <button id="clone-edit-cancel" class="secondary">Cancel</button>
+      <span id="clone-edit-status" class="status"></span>
+    </div>
+  </div>
+</div>
+
 <div id="clone-wizard" class="modal" style="display:none">
   <div class="modal-content clone-wizard-content">
     <h2>Add voice clone</h2>
@@ -1023,6 +1050,6 @@
   </div>
 </div>
 
-<script src="/static/admin/app.js?v=53"></script>
+<script src="/static/admin/app.js?v=54"></script>
 </body>
 </html>
