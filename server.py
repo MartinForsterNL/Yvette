@@ -963,7 +963,7 @@ class TalkApp:
         turn_dir = os.path.join(self.turns_dir, turn_id)
         os.makedirs(turn_dir, exist_ok=True)
         local_name = f"assistant_{idx}{ext}"
-        shutil.copy(audio_path, os.path.join(turn_dir, local_name))
+        shutil.move(audio_path, os.path.join(turn_dir, local_name))
         return f"/api/turn-file/{turn_id}/{local_name}"
 
     def _ditto_paths(self):
