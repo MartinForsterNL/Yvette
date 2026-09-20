@@ -382,7 +382,7 @@ async function finish() {
     fd.append("instruction_id", $("instruction").value);
     fd.append("mode", $("mode").value);
     fd.append("personality", $("personality").value);
-    fd.append("profile", (activeProfile && activeProfile !== "custom") ? activeProfile : "default");
+    fd.append("profile", activeProfile || "default");
     fd.append("skill", selectedSkills.join(","));
     fd.append("model", currentModel);
     fd.append("tts_model", $("tts-model").value);
@@ -611,7 +611,7 @@ async function sendText() {
     fd.append("instruction_id", $("instruction").value);
     fd.append("mode", $("mode").value);
     fd.append("personality", $("personality").value);
-    fd.append("profile", (activeProfile && activeProfile !== "custom") ? activeProfile : "default");
+    fd.append("profile", activeProfile || "default");
     fd.append("skill", selectedSkills.join(","));
     fd.append("model", currentModel);
     fd.append("tts_model", $("tts-model").value);
@@ -676,7 +676,6 @@ $("personality").addEventListener("change", () => {
   loadHistory($("personality").value);
 });
 $("save-profile").onclick = saveProfile;
-$("delete-profile").onclick = deleteProfile;
 $("set-default").onclick = setDefaultProfile;
 
 function clearAttachedImage() {
@@ -733,7 +732,6 @@ $("image-modal").addEventListener("click", (e) => {
 });
 
 function onManualSettingChange() {
-  activeProfile = "custom";
   renderProfileQuick();
   updateTitle();
 }
@@ -752,7 +750,7 @@ $("text-input").addEventListener("keydown", (e) => {
 });
 
 function currentProfile() {
-  return (activeProfile && activeProfile !== "custom") ? activeProfile : "default";
+  return activeProfile || "default";
 }
 
 function renderHistory(turns) {
@@ -894,13 +892,6 @@ function renderProfileQuick() {
   const sel = $("profile-quick");
   if (!sel) return;
   sel.innerHTML = "";
-  if (activeProfile === "custom") {
-    const customOpt = document.createElement("option");
-    customOpt.value = "custom";
-    customOpt.textContent = "custom";
-    customOpt.disabled = true;
-    sel.appendChild(customOpt);
-  }
   for (const name of Object.keys(profiles)) {
     const opt = document.createElement("option");
     opt.value = name; opt.textContent = name;
@@ -962,19 +953,6 @@ async function saveProfile() {
     activeProfile = name;
     updateTitle();
     $("status").textContent = "Profile saved";
-  } catch (e) {
-    $("status").textContent = "Error: " + e.message;
-  }
-}
-
-async function deleteProfile() {
-  const name = $("profile").value;
-  if (name === "__new__" || !name) return;
-  if (!confirm("Delete profile '" + name + "'?")) return;
-  try {
-    await fetch("/api/profiles/delete", { method: "POST", body: new URLSearchParams({ name }) });
-    await loadProfiles();
-    $("status").textContent = "Profile deleted";
   } catch (e) {
     $("status").textContent = "Error: " + e.message;
   }
