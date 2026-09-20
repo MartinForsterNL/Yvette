@@ -924,19 +924,27 @@ class TalkApp:
         d = self.tts_manager.transcribe(audio_path, language=lang)
         return (d.get("text") or "").strip()
 
-    def tts_sentence(self, text: str, voice_id: str = "", instruction_id: str = "", model: str = "") -> str:
+    def tts_sentence(self, text: str, voice_id: str = "", instruction_id: str = "", model: str = "", voice: str = "", speed=None) -> str:
         text = clean_text(text)
         if not self.tts.get("enabled", True):
             return ""
         model = model or self.tts.get("model", "breeze")
         voice_id = voice_id or self.tts.get("voice_id", "")
         instruction_id = instruction_id or self.tts.get("instruction_id", "")
+        settings = None
+        if speed is not None and speed != "":
+            try:
+                settings = {"speed": float(speed)}
+            except (TypeError, ValueError):
+                settings = None
         result = self.tts_manager.synthesize(
             text, model,
+            voice=voice,
             voice_id=voice_id,
             instruction_id=instruction_id,
             instruction=self.tts.get("instruction", ""),
             cfg_scale=self.tts.get("cfg_scale"),
+            settings=settings,
         )
         return result["audio_path"]
 
@@ -1549,7 +1557,7 @@ class TalkApp:
             with self._mem_lock:
                 self._curator_busy = False
 
-    def run_turn(self, turn_id: str, profile: str, audio_path, user_text: str = "", voice_id: str = "", instruction_id: str = "", mode: str = "", image_data: str = None, skill: str = "", model_name: str = "", file_content: str = "", file_name: str = "", tts_model: str = "", avatar: str = "", video: str = "1", gen_audio: str = "1"):
+    def run_turn(self, turn_id: str, profile: str, audio_path, user_text: str = "", voice_id: str = "", instruction_id: str = "", mode: str = "", image_data: str = None, skill: str = "", model_name: str = "", file_content: str = "", file_name: str = "", tts_model: str = "", avatar: str = "", video: str = "1", gen_audio: str = "1", voice: str = "", speed: str = ""):
         turn = self.turns.get(turn_id)
         if turn is None:
             return
@@ -1584,7 +1592,7 @@ class TalkApp:
                 video_url = ""
                 try:
                     if gen_audio == "1":
-                        audio_url = self.tts_sentence(text, voice_id=voice_id, instruction_id=effective_iid["value"], model=tts_model)
+                        audio_url = self.tts_sentence(text, voice_id=voice_id, instruction_id=effective_iid["value"], model=tts_model, voice=voice, speed=speed)
                     if audio_url:
                         audio_url = self._copy_tts_audio(audio_url, turn_id, idx)
                         local_name = audio_url.rsplit("/", 1)[-1]
@@ -1740,6 +1748,8 @@ def create_app(config: dict) -> FastAPI:
         avatar: str = Form(""),
         video: str = Form("1"),
         gen_audio: str = Form("1"),
+        voice: str = Form(""),
+        speed: str = Form(""),
     ):
         a = app.state.app
         user_text = (text or "").strip()
@@ -1829,7 +1839,7 @@ def create_app(config: dict) -> FastAPI:
         with a.lock:
             a.turns[turn_id] = turn
         profile = (personality or "default").strip() or "default"
-        threading.Thread(target=a.run_turn, args=(turn_id, profile, audio_path, user_text, voice_id, instruction_id, mode, image_data, skill, model, file_content, file_name, tts_model, avatar, video, gen_audio), daemon=True).start()
+        threading.Thread(target=a.run_turn, args=(turn_id, profile, audio_path, user_text, voice_id, instruction_id, mode, image_data, skill, model, file_content, file_name, tts_model, avatar, video, gen_audio, voice, speed), daemon=True).start()
         return {"ok": True, "turn_id": turn_id, "conv_id": conv_id}
 
     @app.get("/api/talk/status/{turn_id}")
@@ -2237,6 +2247,8 @@ def create_app(config: dict) -> FastAPI:
         mode: str = Form(""),
         model: str = Form(""),
         tts_model: str = Form(""),
+        voice: str = Form(""),
+        speed: str = Form(""),
     ):
         a = app.state.app
         name = name.strip()
@@ -2249,6 +2261,8 @@ def create_app(config: dict) -> FastAPI:
             "mode": mode,
             "model": model,
             "tts_model": tts_model,
+            "voice": voice,
+            "speed": speed,
         }
         a._save_profiles()
         return {"ok": True, "profiles": a._public_profiles(), "default": a.profiles.get("_default", "")}

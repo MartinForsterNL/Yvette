@@ -93,10 +93,22 @@
       <option value="omnivoice">omnivoice</option>
       <option value="lux">lux</option>
     </select>
-    <label for="voice">Clone</label>
-    <select id="voice"></select>
-    <label for="instruction">Design</label>
-    <select id="instruction"></select>
+    <div id="row-voice-preset" class="setting-row" style="display:none">
+      <label for="voice-preset">Voice</label>
+      <select id="voice-preset"></select>
+    </div>
+    <div id="row-kokoro-speed" class="setting-row" style="display:none">
+      <label for="kokoro-speed">Speed <span id="kokoro-speed-value">1.0</span></label>
+      <input type="range" id="kokoro-speed" min="0.5" max="2.0" value="1.0" step="0.1">
+    </div>
+    <div id="row-voice" class="setting-row">
+      <label for="voice">Voice clone</label>
+      <select id="voice"></select>
+    </div>
+    <div id="row-instruction" class="setting-row">
+      <label for="instruction">Voice design</label>
+      <select id="instruction"></select>
+    </div>
     <label for="mode">Mode</label>
     <select id="mode">
       <option value="chunked">chunked</option>

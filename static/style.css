@@ -757,3 +757,10 @@ body.chat-hidden .conversation {
   padding-top: 10px;
   margin-top: 10px;
 }
+
+/* Engine-aware voice setting rows */
+.setting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

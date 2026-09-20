@@ -195,6 +195,7 @@ class TTSManager:
         seed: Optional[int] = None,
         output_format: str = "",
         gain_db: Optional[float] = None,
+        settings: Optional[dict] = None,
     ) -> dict:
         """Generate speech for one sentence/chunk set. Returns
         {audio_path, filename, duration_sec, sample_rate, model}."""
@@ -237,6 +238,7 @@ class TTSManager:
             instruction=instr,
             cfg_scale=cfg_scale,
             seed=seed,
+            settings=settings,
             sample_rate=self.sample_rate,
         )
 

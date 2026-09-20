@@ -386,6 +386,8 @@ async function finish() {
     fd.append("skill", selectedSkills.join(","));
     fd.append("model", currentModel);
     fd.append("tts_model", $("tts-model").value);
+    fd.append("voice", $("voice-preset").value);
+    fd.append("speed", $("kokoro-speed").value);
     fd.append("avatar", localStorage.getItem("avatar") || "");
     fd.append("video", videoOn() ? "1" : "0");
     fd.append("gen_audio", genAudioOn() ? "1" : "0");
@@ -420,7 +422,7 @@ async function loadVoices() {
     allVoices = vr.voices || [];
     engineCaps = {};
     for (const e of (er.engines || [])) {
-      engineCaps[e.name] = { supports_cloning: !!e.supports_cloning, supports_design: !!e.supports_design };
+      engineCaps[e.name] = { supports_cloning: !!e.supports_cloning, supports_design: !!e.supports_design, voices: e.voices || [], settings: e.settings || [] };
     }
     updateVoiceDropdowns($("tts-model").value);
   } catch (e) {
@@ -429,7 +431,25 @@ async function loadVoices() {
 }
 
 function updateVoiceDropdowns(engineName) {
-  const caps = engineCaps[engineName] || { supports_cloning: false, supports_design: false };
+  const caps = engineCaps[engineName] || { supports_cloning: false, supports_design: false, voices: [], settings: [] };
+  const isKokoro = engineName === "kokoro";
+
+  const presetSel = $("voice-preset");
+  presetSel.innerHTML = "";
+  for (const v of (caps.voices || [])) {
+    const opt = document.createElement("option");
+    opt.value = v.id; opt.textContent = v.name;
+    presetSel.appendChild(opt);
+  }
+
+  const speedSetting = (caps.settings || []).find((s) => s.name === "speed");
+  const speedSlider = $("kokoro-speed");
+  if (speedSetting) {
+    if (speedSetting.min !== undefined) speedSlider.min = speedSetting.min;
+    if (speedSetting.max !== undefined) speedSlider.max = speedSetting.max;
+    if (!speedSlider.dataset.touched && speedSetting.default !== undefined) speedSlider.value = speedSetting.default;
+  }
+  updateSpeedLabel();
 
   const cloneSel = $("voice");
   cloneSel.innerHTML = "";
@@ -458,6 +478,17 @@ function updateVoiceDropdowns(engineName) {
       designSel.appendChild(opt);
     }
   }
+
+  $("row-voice-preset").style.display = isKokoro ? "" : "none";
+  $("row-kokoro-speed").style.display = isKokoro ? "" : "none";
+  $("row-voice").style.display = !isKokoro ? "" : "none";
+  $("row-instruction").style.display = (!isKokoro && caps.supports_design) ? "" : "none";
+}
+
+function updateSpeedLabel() {
+  const v = $("kokoro-speed");
+  const lbl = $("kokoro-speed-value");
+  if (lbl) lbl.textContent = v.value;
 }
 
 async function pollTurn(turnId, userBubble) {
@@ -581,6 +612,8 @@ async function sendText() {
     fd.append("skill", selectedSkills.join(","));
     fd.append("model", currentModel);
     fd.append("tts_model", $("tts-model").value);
+    fd.append("voice", $("voice-preset").value);
+    fd.append("speed", $("kokoro-speed").value);
     fd.append("avatar", localStorage.getItem("avatar") || "");
     fd.append("video", videoOn() ? "1" : "0");
     fd.append("gen_audio", genAudioOn() ? "1" : "0");
@@ -701,8 +734,12 @@ function onManualSettingChange() {
   renderProfileQuick();
   updateTitle();
 }
-["personality", "voice", "instruction", "mode", "tts-model"].forEach((id) => {
+["personality", "voice", "instruction", "mode", "tts-model", "voice-preset", "kokoro-speed"].forEach((id) => {
   $(id).addEventListener("change", onManualSettingChange);
+});
+$("kokoro-speed").addEventListener("input", () => {
+  $("kokoro-speed").dataset.touched = "1";
+  updateSpeedLabel();
 });
 $("tts-model").addEventListener("change", () => updateVoiceDropdowns($("tts-model").value));
 
@@ -892,6 +929,8 @@ function applyProfile(name) {
     else ttsSel.value = "breeze";
   }
   updateVoiceDropdowns(ttsSel ? ttsSel.value : "");
+  if (p.voice && [...$("voice-preset").options].some(o => o.value === p.voice)) $("voice-preset").value = p.voice;
+  if (p.speed && !isNaN(parseFloat(p.speed))) { $("kokoro-speed").value = p.speed; $("kokoro-speed").dataset.touched = "1"; updateSpeedLabel(); }
   if (p.voice_id && [...$("voice").options].some(o => o.value === p.voice_id)) $("voice").value = p.voice_id;
   if (p.instruction_id && [...$("instruction").options].some(o => o.value === p.instruction_id)) $("instruction").value = p.instruction_id;
 }
@@ -910,6 +949,8 @@ async function saveProfile() {
     mode: $("mode").value,
     model: currentModel,
     tts_model: $("tts-model").value,
+    voice: $("voice-preset").value,
+    speed: $("kokoro-speed").value,
   });
   try {
     await fetch("/api/profiles", { method: "POST", body });
