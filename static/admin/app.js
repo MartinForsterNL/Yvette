@@ -810,7 +810,7 @@ async function loadAvatars() {
       const card = document.createElement("div");
       card.className = "avatar-thumb";
       const img = document.createElement("img");
-      img.src = "/static/avatars/" + a.image;
+      img.src = "/static/avatars/" + a.image + (a.v ? ("?v=" + a.v) : "");
       img.alt = "Avatar " + a.id;
       img.title = a.idle_ready ? "Click to preview idle" : "Idle video not ready";
       img.onclick = () => { if (a.idle_ready) previewIdle(a.id); };
