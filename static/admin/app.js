@@ -235,7 +235,7 @@ function renderProfileList(box, list, emptyMsg) {
         ${v.transcript ? `<div class="hint transcript">“${escapeHtml(v.transcript.slice(0, 120))}${v.transcript.length > 120 ? "…" : ""}”</div>` : ""}
       </div>
       <div class="profile-actions">
-
+        ${v.kind === "design" ? `<button class="secondary edit-btn" data-id="${v.id}">Edit</button>` : ""}
         <button class="danger del-btn" data-id="${v.id}">Delete</button>
       </div>`;
     box.appendChild(row);
