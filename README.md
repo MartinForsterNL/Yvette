@@ -24,6 +24,30 @@ the personality that feels right. Make it yours.
 - **Separate personalities** - set up different profiles (say "work" and "fun"),
   each with its own personality, voice, and chat history.
 
+## Screenshots
+
+### Talk UI
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/talk-main.jpg" alt="Main view" width="175"><br><sub>Main view</sub></td>
+    <td align="center"><img src="docs/screenshots/talk-avatars.jpg" alt="Avatar picker" width="175"><br><sub>Avatar picker</sub></td>
+    <td align="center"><img src="docs/screenshots/talk-settings.jpg" alt="Voice settings" width="175"><br><sub>Voice settings</sub></td>
+    <td align="center"><img src="docs/screenshots/talk-chat.jpg" alt="Conversation" width="175"><br><sub>Conversation</sub></td>
+  </tr>
+</table>
+
+### Admin
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/admin-avatars.jpg" alt="Avatars" width="175"><br><sub>Avatars</sub></td>
+    <td align="center"><img src="docs/screenshots/admin-tts.jpg" alt="TTS models" width="175"><br><sub>TTS models</sub></td>
+    <td align="center"><img src="docs/screenshots/admin-personalities.jpg" alt="Personalities" width="175"><br><sub>Personalities</sub></td>
+    <td align="center"><img src="docs/screenshots/admin-status.jpg" alt="System status" width="175"><br><sub>System status</sub></td>
+  </tr>
+</table>
+
 ## Requirements
 
 - Windows 10 or 11
