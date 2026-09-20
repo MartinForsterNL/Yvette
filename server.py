@@ -1464,9 +1464,11 @@ class TalkApp:
     def _resolve_final_answer(self, messages: list, profile: str = "default", model_name: str = "", turn: dict = None, session: str = "default"):
         """Run the tool loop (native function calling, up to 3 rounds).
         Returns (final_answer_text, tool_calls_made)."""
-        tools = TOOLS if self.config.get("toolcalling", {}).get("enabled", True) else None
+        tc_cfg = self.config.get("toolcalling", {}) or {}
+        tools = TOOLS if tc_cfg.get("enabled", True) else None
+        max_rounds = int(tc_cfg.get("max_rounds", 100))
         calls_made = []
-        for i in range(10):
+        for i in range(max_rounds):
             content, tool_calls, reasoning = self._llm_call(messages, tools=tools, model_name=model_name)
             print("[tool] round " + str(i) + ": tool_calls=" + str(len(tool_calls)))
             if not tool_calls:

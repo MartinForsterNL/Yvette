@@ -104,6 +104,7 @@ stt:
   model: large-v3-turbo
 toolcalling:
   enabled: true
+  max_rounds: 100
 tts:
   cfg_scale: 4
   enabled: true
