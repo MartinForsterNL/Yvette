@@ -25,16 +25,49 @@ avatar/
 
 # ===== user-created content (configured via admin UI) =====
 personality.md
-personalities/
-profiles.json
+personalities/*
+!personalities/Assist.md
+!personalities/Girlfriend.md
 skills/
-voices/ref_audio/
-voices/profiles.json
+voices/ref_audio/*
+!voices/ref_audio/v_1789917885_8aaccb.wav
+!voices/ref_audio/v_1789918713_a71ac3.wav
 static/avatars/*
 !static/avatars/default.jpg
+!static/avatars/1.mp4
+!static/avatars/1.png
+!static/avatars/10.mp4
+!static/avatars/10.png
+!static/avatars/11.mp4
+!static/avatars/11.png
+!static/avatars/12.mp4
+!static/avatars/12.png
+!static/avatars/13.mp4
+!static/avatars/13.png
+!static/avatars/14.jpeg
+!static/avatars/14.mp4
+!static/avatars/15.jpeg
+!static/avatars/15.mp4
+!static/avatars/16.mp4
+!static/avatars/16.png
+!static/avatars/2.jpg
+!static/avatars/2.mp4
+!static/avatars/3.jpg
+!static/avatars/3.mp4
+!static/avatars/4.jpg
+!static/avatars/4.mp4
+!static/avatars/5.jpeg
+!static/avatars/5.mp4
+!static/avatars/6.jpeg
+!static/avatars/6.mp4
+!static/avatars/7.mp4
+!static/avatars/7.png
+!static/avatars/8.jpeg
+!static/avatars/8.mp4
+!static/avatars/9.mp4
+!static/avatars/9.png
 
 # ===== generated settings =====
-avatars_settings.json
 
 # ===== ssl (generated on demand) =====
 cert.pem

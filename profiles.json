@@ -1,0 +1,23 @@
+{
+  "Work": {
+    "personality": "Assist",
+    "voice_id": "v_1789917885_8aaccb",
+    "instruction_id": "",
+    "mode": "chunked",
+    "model": "Small",
+    "tts_model": "lux",
+    "voice": "",
+    "speed": "1"
+  },
+  "_default": "Work",
+  "Fun": {
+    "personality": "Girlfriend",
+    "voice_id": "v_1789918713_a71ac3",
+    "instruction_id": "",
+    "mode": "chunked",
+    "model": "Small",
+    "tts_model": "lux",
+    "voice": "",
+    "speed": "1"
+  }
+}

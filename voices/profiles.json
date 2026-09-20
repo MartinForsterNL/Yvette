@@ -1,0 +1,52 @@
+{
+  "v_1789855195_868e77": {
+    "name": "default",
+    "kind": "design",
+    "model": "breeze",
+    "engines": [
+      "breeze",
+      "lux"
+    ],
+    "ref_audio": null,
+    "transcript": "",
+    "instruction": "A warm, thoughtful young woman with a clear voice and a calm, reflective delivery",
+    "created": "2026-09-19T23:59:55"
+  },
+  "v_1789909191_a8fb8d": {
+    "name": "British-female",
+    "kind": "design",
+    "model": "omnivoice",
+    "engines": [
+      "omnivoice"
+    ],
+    "ref_audio": null,
+    "transcript": "",
+    "instruction": "Female, Middle-aged, Low Pitch, British Accent",
+    "created": "2026-09-20T14:59:51"
+  },
+  "v_1789917885_8aaccb": {
+    "name": "Yvette",
+    "kind": "clone",
+    "model": "breeze",
+    "engines": [
+      "breeze",
+      "omnivoice"
+    ],
+    "ref_audio": "voices\\ref_audio\\v_1789917885_8aaccb.wav",
+    "transcript": "Your work inspires everyone. Your dedication, creativity, and kindness make a difference.",
+    "instruction": "",
+    "created": "2026-09-20T17:24:45"
+  },
+  "v_1789918713_a71ac3": {
+    "name": "Yvette-Lux",
+    "kind": "clone",
+    "model": "lux",
+    "engines": [
+      "lux"
+    ],
+    "ref_audio": "voices\\ref_audio\\v_1789918713_a71ac3.wav",
+    "transcript": "Let me know when you are ready to hear my voice or need any assistance.",
+    "instruction": "",
+    "created": "2026-09-20T17:38:33"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "1": {
+    "name": "Nordic",
+    "head_motion_alpha": 1.25,
+    "idle_motion_alpha": 1.5,
+    "idle_length": 60.0
+  },
+  "2": {
+    "name": "BW"
+  },
+  "3": {
+    "name": "Droid"
+  },
+  "4": {
+    "name": "Paint"
+  },
+  "5": {
+    "name": "swing"
+  },
+  "6": {
+    "name": "Sweet"
+  },
+  "7": {
+    "name": "Morning"
+  },
+  "8": {
+    "name": "Princess"
+  },
+  "9": {
+    "name": "Danger"
+  },
+  "10": {
+    "name": "Pink"
+  },
+  "11": {
+    "name": "Japan"
+  },
+  "12": {
+    "name": "Casual"
+  },
+  "13": {
+    "name": "Curly"
+  },
+  "14": {
+    "name": "Uhmmm"
+  },
+  "15": {
+    "name": "Medevil"
+  },
+  "16": {
+    "name": "Gentle"
+  }
+}
