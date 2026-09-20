@@ -1101,6 +1101,7 @@ function applyAvatar(id) {
   document.querySelectorAll(".avatar-thumb").forEach(el => {
     el.classList.toggle("selected", el.dataset.id === name);
   });
+  applyIdleAvatar();
 }
 
 function renderAvatarGrid(avatars) {
