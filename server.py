@@ -62,6 +62,8 @@ ENGINE_SETTINGS = {
         {"key": "auto_start", "type": "bool", "label": "Auto-start", "desc": "Load the model at server startup instead of on first use.", "default": False},
         {"key": "default_cfg_scale", "type": "float", "label": "Default CFG scale", "desc": "Default instruction-following strength (higher = stronger direction).", "min": 1.0, "max": 10.0, "default": 4.0},
         {"key": "default_seed", "type": "int", "label": "Default seed", "desc": "Default random seed (empty = random each generation).", "default": None},
+        {"key": "default_voice_id", "type": "voice", "label": "Default voice", "desc": "Default clone voice for this engine.", "default": ""},
+        {"key": "default_instruction_id", "type": "design", "label": "Default design", "desc": "Default voice design for this engine.", "default": ""},
         {"key": "port", "type": "int", "label": "Port", "desc": "Internal subprocess port for the breeze server.", "default": 8137},
     ],
     "omnivoice": [
@@ -72,6 +74,8 @@ ENGINE_SETTINGS = {
         {"key": "num_step", "type": "int", "label": "Num steps", "desc": "Number of diffusion sampling steps.", "default": 64},
         {"key": "class_temperature", "type": "float", "label": "Class temperature", "desc": "Classifier-free guidance temperature.", "default": 1.0},
         {"key": "default_guidance_scale", "type": "float", "label": "Default guidance scale", "desc": "Default guidance strength.", "min": 1.0, "max": 10.0, "default": 4.0},
+        {"key": "default_voice_id", "type": "voice", "label": "Default voice", "desc": "Default clone voice for this engine.", "default": ""},
+        {"key": "default_instruction_id", "type": "design", "label": "Default design", "desc": "Default voice design for this engine.", "default": ""},
     ],
     "lux": [
         {"key": "enabled", "type": "bool", "label": "Enabled", "desc": "Whether the lux engine is available.", "default": True},
@@ -79,6 +83,7 @@ ENGINE_SETTINGS = {
         {"key": "num_steps", "type": "int", "label": "Num steps", "desc": "Number of diffusion sampling steps.", "default": 8},
         {"key": "t_shift", "type": "float", "label": "Time shift", "desc": "Time shift parameter for the scheduler.", "default": 0.9},
         {"key": "rms", "type": "float", "label": "RMS", "desc": "RMS normalization level.", "default": 0.01},
+        {"key": "default_voice_id", "type": "voice", "label": "Default voice", "desc": "Default clone voice for this engine.", "default": ""},
     ],
 }
 
@@ -2424,6 +2429,8 @@ def create_app(config: dict) -> FastAPI:
                 "supports_design": st.get("supports_design"),
                 "settings": st.get("settings", []),
                 "voices": st.get("voices", []),
+                "default_voice_id": (a.config.get("models", {}).get(name, {}) or {}).get("default_voice_id", ""),
+                "default_instruction_id": (a.config.get("models", {}).get(name, {}) or {}).get("default_instruction_id", ""),
             })
         return {"engines": out}
 

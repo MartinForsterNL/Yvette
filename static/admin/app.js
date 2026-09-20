@@ -771,8 +771,15 @@ function setEngines(containerId, engines) {
 // --- engine settings ---
 async function loadEngineSettings() {
   try {
-    const r = await fetch("/api/engines/settings");
+    const [r, vr] = await Promise.all([
+      fetch("/api/engines/settings"),
+      fetch("/api/voices"),
+    ]);
     const d = await r.json();
+    const vd = await vr.json();
+    const esVoices = vd.voices || [];
+    const esClones = esVoices.filter((v) => v.kind === "clone");
+    const esDesigns = esVoices.filter((v) => v.kind === "design");
     const box = document.getElementById("engine-settings");
     if (!box) return;
     box.innerHTML = "";
@@ -797,6 +804,16 @@ async function loadEngineSettings() {
           input = document.createElement("input");
           input.type = "checkbox";
           input.checked = !!s.value;
+        } else if (s.type === "voice") {
+          input = document.createElement("select");
+          const vnone = document.createElement("option"); vnone.value = ""; vnone.textContent = "(none)"; input.appendChild(vnone);
+          for (const v of esClones) { const o = document.createElement("option"); o.value = v.id; o.textContent = v.name; input.appendChild(o); }
+          input.value = s.value || "";
+        } else if (s.type === "design") {
+          input = document.createElement("select");
+          const dnone = document.createElement("option"); dnone.value = ""; dnone.textContent = "(none)"; input.appendChild(dnone);
+          for (const v of esDesigns) { const o = document.createElement("option"); o.value = v.id; o.textContent = v.name; input.appendChild(o); }
+          input.value = s.value || "";
         } else if (s.type === "select") {
           input = document.createElement("select");
           for (const o of (s.options || [])) {
@@ -1730,6 +1747,18 @@ function updateProfVoiceDropdowns(engineName) {
   const engine = profEngines.find((e) => e.name === engineName) || {};
   const supportsClone = !!engine.supports_cloning;
   const supportsDesign = !!engine.supports_design;
+  const isKokoro = engineName === "kokoro";
+
+  const psel = document.getElementById("prof-voice-preset");
+  const spd = document.getElementById("prof-speed");
+  psel.innerHTML = "";
+  for (const v of (engine.voices || [])) {
+    const o = document.createElement("option"); o.value = v.id; o.textContent = v.name;
+    if (v.default === true) o.selected = true;
+    psel.appendChild(o);
+  }
+  const speedSetting = (engine.settings || []).find((s) => s.name === "speed");
+  if (speedSetting && speedSetting.default !== undefined) spd.value = speedSetting.default;
 
   const vsel = document.getElementById("prof-voice");
   const dsel = document.getElementById("prof-design");
@@ -1739,16 +1768,25 @@ function updateProfVoiceDropdowns(engineName) {
   const clones = supportsClone ? profVoices.filter((v) => v.kind === "clone" && voiceMarkedFor(v, engineName)) : [];
   vsel.appendChild(_noneOption());
   for (const v of clones) {
-    const o = document.createElement("option"); o.value = v.id; o.textContent = v.name; vsel.appendChild(o);
+    const o = document.createElement("option"); o.value = v.id; o.textContent = v.name;
+    if (v.id === (engine.default_voice_id || "")) o.selected = true;
+    vsel.appendChild(o);
   }
   vsel.disabled = clones.length === 0;
 
   const designs = supportsDesign ? profVoices.filter((v) => v.kind === "design" && voiceMarkedFor(v, engineName)) : [];
   dsel.appendChild(_noneOption());
   for (const v of designs) {
-    const o = document.createElement("option"); o.value = v.id; o.textContent = v.name; dsel.appendChild(o);
+    const o = document.createElement("option"); o.value = v.id; o.textContent = v.name;
+    if (v.id === (engine.default_instruction_id || "")) o.selected = true;
+    dsel.appendChild(o);
   }
   dsel.disabled = designs.length === 0;
+
+  document.getElementById("prof-row-voice-preset").style.display = isKokoro ? "" : "none";
+  document.getElementById("prof-row-speed").style.display = isKokoro ? "" : "none";
+  document.getElementById("prof-row-voice").style.display = !isKokoro ? "" : "none";
+  document.getElementById("prof-row-design").style.display = (!isKokoro && supportsDesign) ? "" : "none";
 }
 
 document.getElementById("prof-tts").onchange = () => updateProfVoiceDropdowns(document.getElementById("prof-tts").value);
@@ -1815,6 +1853,8 @@ function openTalkProfileEdit(name, p) {
   updateProfVoiceDropdowns(p.tts_model || "");
   document.getElementById("prof-voice").value = p.voice_id || "";
   document.getElementById("prof-design").value = p.instruction_id || "";
+  if (p.voice) document.getElementById("prof-voice-preset").value = p.voice;
+  if (p.speed !== undefined && p.speed !== null && p.speed !== "") { document.getElementById("prof-speed").value = p.speed; }
   document.getElementById("prof-modal").style.display = "flex";
 }
 
@@ -1843,6 +1883,8 @@ document.getElementById("prof-save").onclick = async () => {
   fd.append("tts_model", document.getElementById("prof-tts").value);
   fd.append("voice_id", document.getElementById("prof-voice").value);
   fd.append("instruction_id", document.getElementById("prof-design").value);
+  fd.append("voice", document.getElementById("prof-voice-preset").value);
+  fd.append("speed", document.getElementById("prof-speed").value);
   fd.append("model", document.getElementById("prof-model").value);
   fd.append("mode", document.getElementById("prof-mode").value);
   st.textContent = "Saving...";

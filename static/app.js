@@ -422,7 +422,7 @@ async function loadVoices() {
     allVoices = vr.voices || [];
     engineCaps = {};
     for (const e of (er.engines || [])) {
-      engineCaps[e.name] = { supports_cloning: !!e.supports_cloning, supports_design: !!e.supports_design, voices: e.voices || [], settings: e.settings || [] };
+      engineCaps[e.name] = { supports_cloning: !!e.supports_cloning, supports_design: !!e.supports_design, voices: e.voices || [], settings: e.settings || [], default_voice_id: e.default_voice_id || "", default_instruction_id: e.default_instruction_id || "" };
     }
     updateVoiceDropdowns($("tts-model").value);
   } catch (e) {
@@ -462,6 +462,7 @@ function updateVoiceDropdowns(engineName) {
       if (v.kind !== "clone" || !voiceMarkedFor(v, engineName)) continue;
       const opt = document.createElement("option");
       opt.value = v.id; opt.textContent = v.name;
+      if (v.id === (caps.default_voice_id || "")) opt.selected = true;
       cloneSel.appendChild(opt);
     }
   }
@@ -476,6 +477,7 @@ function updateVoiceDropdowns(engineName) {
       if (v.kind !== "design" || !voiceMarkedFor(v, engineName)) continue;
       const opt = document.createElement("option");
       opt.value = v.id; opt.textContent = v.name;
+      if (v.id === (caps.default_instruction_id || "")) opt.selected = true;
       designSel.appendChild(opt);
     }
   }
