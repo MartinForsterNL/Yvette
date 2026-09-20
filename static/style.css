@@ -271,11 +271,12 @@ h1 { font-size: 20px; margin: 0; color: var(--text); }
 .replay-btn:active { background: var(--accent); color: #fff; }
 .bubble.tool {
   align-self: flex-start;
-  background: transparent;
-  border: 1px dashed var(--border);
-  color: var(--muted);
+  background: color-mix(in srgb, #ffffff var(--bubble-opacity), transparent);
+  border: 1px solid color-mix(in srgb, var(--border) var(--bubble-opacity), transparent);
+  color: #000;
   font-size: 12px;
   font-style: italic;
+  border-bottom-left-radius: 4px;
 }
 .download-link {
   color: var(--accent);
