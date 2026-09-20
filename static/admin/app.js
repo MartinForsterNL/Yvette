@@ -2025,7 +2025,7 @@ function goWizStep(n) {
   if (panel) panel.classList.add("active");
   document.getElementById("wiz-back").style.display = n > 1 ? "" : "none";
   const nb = document.getElementById("wiz-next");
-  nb.textContent = { 1: "Next", 2: "Save trim", 3: "Process (Whisper)", 4: "Done", 5: "Next", 6: "Save voice clone" }[n] || "Next";
+  nb.textContent = { 1: "Next", 2: "Save trim", 3: "Process (Whisper)", 4: "Next", 5: "Next", 6: "Save voice clone" }[n] || "Next";
   if (n === 3) renderWizEngines();
   if (n === 6) renderWizSamples();
 }
@@ -2136,6 +2136,20 @@ function updateTrimLabels() {
   window.addEventListener("mouseup", () => { wizDrag = null; });
 })();
 
+let wizPlaySrc = null;
+document.getElementById("wiz-play").onclick = () => {
+  if (!cw.audioBuffer || !wizAudioCtx) return;
+  if (wizPlaySrc) { try { wizPlaySrc.stop(); } catch (e) {} wizPlaySrc = null; document.getElementById("wiz-play").textContent = "Play selection"; return; }
+  const src = wizAudioCtx.createBufferSource();
+  src.buffer = cw.audioBuffer;
+  src.connect(wizAudioCtx.destination);
+  const dur = (cw.trimEnd || cw.audioBuffer.duration) - cw.trimStart;
+  src.start(0, cw.trimStart, Math.max(0.05, dur));
+  wizPlaySrc = src;
+  document.getElementById("wiz-play").textContent = "Stop";
+  src.onended = () => { wizPlaySrc = null; document.getElementById("wiz-play").textContent = "Play selection"; };
+};
+
 function makeTrimmedWav() {
   const buf = cw.audioBuffer;
   const sr = buf.sampleRate;
@@ -2197,7 +2211,9 @@ function renderWizEngines() {
 // ---- step 3->4: transcribe ----
 async function wizTranscribe() {
   const st = document.getElementById("wiz-status");
+  const nb = document.getElementById("wiz-next");
   if (!cw.trimmedBlob) { st.textContent = "No trimmed audio."; return; }
+  nb.disabled = true;
   st.textContent = "Transcribing with Whisper…";
   const fd = new FormData();
   fd.append("audio", cw.trimmedBlob, "ref.wav");
@@ -2211,6 +2227,8 @@ async function wizTranscribe() {
     goWizStep(4);
   } catch (e) {
     st.textContent = "Transcribe error: " + e.message;
+  } finally {
+    nb.disabled = false;
   }
 }
 
