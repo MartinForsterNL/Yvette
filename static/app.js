@@ -235,31 +235,31 @@ function addToolCall(tc) {
   scrollToBottom();
 }
 
-function setTalking(t) {
+function setTurnState(state) {
+  // state: "idle" | "processing" | "thinking" | "talking"
   const el = $("talking");
   const label = $("talking-label");
   const stop = $("stop-btn");
-  el.style.display = t ? "" : "none";
-  $("status").style.display = t ? "none" : "";
-  if (label) label.style.display = "none";
-  if (stop) stop.style.display = t ? "" : "none";
-}
-
-function setThinking(on) {
-  const el = $("talking");
-  const label = $("talking-label");
-  const stop = $("stop-btn");
-  if (on) {
-    el.style.display = "";
-    $("status").style.display = "none";
-    if (label) label.style.display = "";
-    if (stop) stop.style.display = "none";
-  } else {
+  const texts = { processing: "Processing...", thinking: "Thinking...", talking: "Talking..." };
+  if (state === "idle") {
     el.style.display = "none";
     $("status").style.display = "";
     if (label) label.style.display = "none";
     if (stop) stop.style.display = "none";
+  } else {
+    el.style.display = "";
+    $("status").style.display = "none";
+    if (label) { label.style.display = ""; label.textContent = texts[state] || state; }
+    if (stop) stop.style.display = "";
   }
+}
+
+function setTalking(t) {
+  setTurnState(t ? "talking" : "idle");
+}
+
+function setThinking(on, phase) {
+  setTurnState(on ? (phase || "thinking") : "idle");
 }
 
 function ensurePlayer() {
@@ -364,14 +364,13 @@ async function finish() {
   const blob = new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" });
   if (blob.size < 500) { $("status").textContent = "Too short, try again"; return; }
 
-  setThinking(true);
+  setThinking(true, "processing");
   beginTurn();
   ensureConvId();
 
   // stop any current playback (keep the sequence for replay)
   if (player) player.pause();
   mediaIndex = -1;
-  setTalking(false);
   highlightPlaying();
 
   const userBubble = addBubble("user", "...");
@@ -554,7 +553,7 @@ async function resumeActiveTurn() {
   const turnId = localStorage.getItem("talk_active_turn");
   if (!turnId) return;
   const bubble = addBubble("user", "...");
-  setThinking(true);
+  setThinking(true, "processing");
   beginTurn();
   try {
     await pollTurn(turnId, bubble);
@@ -594,13 +593,12 @@ async function sendText() {
   const text = $("text-input").value.trim();
   if (!text) return;
   $("text-input").value = "";
-  setThinking(true);
+  setThinking(true, "processing");
   beginTurn();
   ensureConvId();
 
   if (player) player.pause();
   mediaIndex = -1;
-  setTalking(false);
   highlightPlaying();
 
   const userBubble = addBubble("user", text);
