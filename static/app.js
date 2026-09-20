@@ -651,7 +651,7 @@ $("avatar-modal").addEventListener("click", (e) => {
 function switchProfile(name) {
   activeProfile = name;
   applyProfile(name);
-  loadHistory($("personality").value);
+  loadHistory(name);
   const s = $("profile");
   if ([...s.options].some(o => o.value === name)) s.value = name;
   updateTitle();
@@ -672,9 +672,6 @@ $("profile-quick").onchange = () => {
     switchProfile(v);
   }
 };
-$("personality").addEventListener("change", () => {
-  loadHistory($("personality").value);
-});
 $("save-profile").onclick = saveProfile;
 $("set-default").onclick = setDefaultProfile;
 
