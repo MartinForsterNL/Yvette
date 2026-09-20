@@ -439,6 +439,7 @@ function updateVoiceDropdowns(engineName) {
   for (const v of (caps.voices || [])) {
     const opt = document.createElement("option");
     opt.value = v.id; opt.textContent = v.name;
+    if (v.default === true) opt.selected = true;
     presetSel.appendChild(opt);
   }
 

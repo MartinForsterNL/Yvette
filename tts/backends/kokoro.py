@@ -62,14 +62,15 @@ class KokoroBackend(ModelBackend):
         self._pipeline = KPipeline(lang_code="a")  # lang set per-call via voice
 
     def voices(self) -> list[dict]:
+        default = self.config.get("default_voice", "bf_isabella")
         return [
-            {"id": v, "name": v, "lang_code": _derive_lang_code(v)}
+            {"id": v, "name": v, "lang_code": _derive_lang_code(v), "default": v == default}
             for v in VALID_VOICES
         ]
 
     def settings_schema(self) -> list[dict]:
         return [
-            {"name": "speed", "type": "float", "default": 1.0, "min": 0.5, "max": 2.0,
+            {"name": "speed", "type": "float", "default": self.config.get("speed", 1.0), "min": 0.5, "max": 2.0,
              "description": "Speaking speed (higher = faster)"},
         ]
 
