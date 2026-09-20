@@ -235,7 +235,7 @@ function renderProfileList(box, list, emptyMsg) {
         ${v.transcript ? `<div class="hint transcript">“${escapeHtml(v.transcript.slice(0, 120))}${v.transcript.length > 120 ? "…" : ""}”</div>` : ""}
       </div>
       <div class="profile-actions">
-        ${v.kind === "design" ? `<button class="secondary edit-btn" data-id="${v.id}">Edit</button>` : ""}
+        <button class="secondary edit-btn" data-id="${v.id}">Edit</button>
         <button class="danger del-btn" data-id="${v.id}">Delete</button>
       </div>`;
     box.appendChild(row);
@@ -394,8 +394,42 @@ function editProfile(id) {
   if (!v) return;
   if (v.kind === "design") {
     openDesignWizard(v);
+  } else {
+    openCloneEdit(v);
   }
 }
+
+let editingCloneId = null;
+function openCloneEdit(v) {
+  editingCloneId = v.id;
+  document.getElementById("clone-edit-name").value = v.name || "";
+  document.getElementById("clone-edit-transcript").value = v.transcript || "";
+  setEngines("clone-edit-engines", v.engines || [v.model || "breeze"]);
+  document.getElementById("clone-edit-modal").style.display = "flex";
+}
+document.getElementById("clone-edit-save").onclick = async () => {
+  const st = document.getElementById("clone-edit-status");
+  const name = document.getElementById("clone-edit-name").value.trim();
+  if (!name) { st.textContent = "name required"; return; }
+  const transcript = document.getElementById("clone-edit-transcript").value.trim();
+  const engines = getEngines("clone-edit-engines");
+  st.textContent = "Saving...";
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("transcript", transcript);
+  fd.append("engines", engines.join(","));
+  try {
+    const r = await fetch("/api/voices/" + editingCloneId, { method: "PUT", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    st.textContent = "Saved.";
+    document.getElementById("clone-edit-modal").style.display = "none";
+    refreshVoices($("model").value);
+  } catch (e) {
+    st.textContent = "Save error: " + e.message;
+  }
+};
+document.getElementById("clone-edit-cancel").onclick = () => { document.getElementById("clone-edit-modal").style.display = "none"; };
 
 
 
