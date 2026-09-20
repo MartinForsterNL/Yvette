@@ -114,11 +114,13 @@ class BreezeBackend(ModelBackend):
             ds = self.config.get("default_seed")
             seed = int(ds) if (ds is not None and ds != "" and ds != 0) else random.randint(0, 2**31 - 1)
         data = {"text": text, "seed": str(seed)}
-        if cfg_scale is None:
-            cfg_scale = float(self.config.get("default_cfg_scale", 4.0))
-        data["cfg_scale"] = str(cfg_scale)
         if instruction:
             data["instruction"] = instruction
+            if cfg_scale is None:
+                cfg_scale = float(self.config.get("default_cfg_scale", 4.0))
+            data["cfg_scale"] = str(cfg_scale)
+        else:
+            data["cfg_scale"] = "1.0"
 
         files = None
         ref_handle = None
