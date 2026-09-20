@@ -3149,7 +3149,9 @@ def create_app(config: dict) -> FastAPI:
         avs = []
         for av in a._avatars():
             idle_ready = os.path.isfile(os.path.join(a._static_avatars_dir(), av["id"] + ".mp4"))
-            avs.append({**av, "idle_ready": idle_ready, **a._avatar_settings(av["id"]), "overrides": av["id"] in settings})
+            img_path = os.path.join(a._avatars_dir(), av["image"])
+            v = int(os.path.getmtime(img_path)) if os.path.isfile(img_path) else 0
+            avs.append({**av, "idle_ready": idle_ready, "v": v, **a._avatar_settings(av["id"]), "overrides": av["id"] in settings})
         return {"avatars": avs}
 
     @app.put("/api/avatars/{avatar_id}")

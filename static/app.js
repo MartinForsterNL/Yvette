@@ -1085,7 +1085,7 @@ let AVATARS = [];
 function avatarImage(id) {
   if (!id) return "/static/avatars/default.jpg";
   const a = AVATARS.find(x => x.id === id);
-  return a ? ("/static/avatars/" + a.image) : ("/static/avatars/" + id + ".png");
+  return a ? ("/static/avatars/" + a.image + (a.v ? ("?v=" + a.v) : "")) : ("/static/avatars/" + id + ".png");
 }
 
 function applyAvatar(id) {
@@ -1130,7 +1130,7 @@ function renderAvatarGrid(avatars) {
   };
   make("", "/static/avatars/default.jpg", "Default", false, false);
   for (const a of AVATARS) {
-    make(a.id, "/static/avatars/" + a.image, "Avatar " + a.id, true, !a.idle_ready);
+    make(a.id, "/static/avatars/" + a.image + (a.v ? ("?v=" + a.v) : ""), a.name || ("Avatar " + a.id), true, !a.idle_ready);
   }
   applyAvatar(localStorage.getItem("avatar") || "");
 }
@@ -1298,7 +1298,7 @@ function renderEntryAvatarGrid(avatars) {
     return as - bs;
   });
   for (const a of list) {
-    make(a.id, "/static/avatars/" + a.image, "Avatar " + a.id, !a.idle_ready);
+    make(a.id, "/static/avatars/" + a.image + (a.v ? ("?v=" + a.v) : ""), a.name || ("Avatar " + a.id), !a.idle_ready);
   }
   selectEntryAvatar(entryAvatar);
 }
