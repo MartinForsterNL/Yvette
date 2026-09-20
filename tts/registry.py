@@ -191,6 +191,8 @@ class TTSManager:
         voice_id: str = "",
         instruction_id: str = "",
         instruction: str = "",
+        ref_audio: Optional[str] = None,
+        ref_text: Optional[str] = None,
         cfg_scale: Optional[float] = None,
         seed: Optional[int] = None,
         output_format: str = "",
@@ -207,7 +209,7 @@ class TTSManager:
         fmt = output_format or self.output_format
 
         # Resolve voice profile -> ref_audio / ref_text / instruction
-        ref_audio = ref_text = instr = None
+        instr = None
         if voice_id:
             profile = self.voices.get(voice_id)
             if profile is None:

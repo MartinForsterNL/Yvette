@@ -46,8 +46,6 @@ const $ = (id) => document.getElementById(id);
 
 let models = [];
 let voices = [];
-let refAudioFile = null;   // File object from upload or recording
-let refAudioUrl = null;    // object URL for preview
 let editingId = null;      // profile id being edited (null = create mode)
 let recChunks = [];
 let recTimer = null;
@@ -238,7 +236,7 @@ function renderProfileList(box, list, emptyMsg) {
       </div>
       <div class="profile-actions">
         <button class="secondary test-btn" data-id="${v.id}">Test</button>
-        <button class="secondary edit-btn" data-id="${v.id}">Edit</button>
+        ${v.kind === "design" ? '<button class="secondary edit-btn" data-id="${v.id}">Edit</button>' : ""}
         <button class="danger del-btn" data-id="${v.id}">Delete</button>
       </div>`;
     box.appendChild(row);
@@ -421,24 +419,7 @@ function editProfile(id) {
     $("save-design").textContent = "Update profile";
     $("design-cancel").style.display = "";
     $("design-card").scrollIntoView({ behavior: "smooth" });
-  } else {
-    $("clone-name").value = v.name || "";
-    $("transcript").value = v.transcript || "";
-    setEngines("clone-engines", v.engines || [v.model || "breeze"]);
-    $("save-clone").textContent = "Update profile";
-    $("clone-cancel").style.display = "";
-    $("clone-card").scrollIntoView({ behavior: "smooth" });
   }
-}
-
-function resetCloneForm() {
-  editingId = null;
-  $("clone-name").value = "";
-  $("transcript").value = "";
-  setRefAudio(null, null);
-  $("save-clone").textContent = "Save voice profile";
-  $("clone-cancel").style.display = "none";
-  setEngines("clone-engines", ["breeze"]);
 }
 
 function resetDesignForm() {
@@ -450,93 +431,9 @@ function resetDesignForm() {
   setEngines("design-engines", ["breeze"]);
 }
 
-$("clone-cancel").onclick = resetCloneForm;
 $("design-cancel").onclick = resetDesignForm;
 
-// ---------- reference audio (upload / record) ----------
-$("upload-file").onchange = (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  setRefAudio(f, URL.createObjectURL(f));
-};
 
-function setRefAudio(file, url) {
-  refAudioFile = file;
-  if (refAudioUrl) URL.revokeObjectURL(refAudioUrl);
-  refAudioUrl = url;
-  if (file) {
-    $("ref-status").textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB)`;
-    $("ref-status").className = "status ok";
-  } else {
-    $("ref-status").textContent = "none";
-    $("ref-status").className = "status";
-  }
-}
-
-// ---------- STT ----------
-$("transcribe-btn").onclick = async () => {
-  if (!refAudioFile) { setStatus("clone-status", "record or upload reference audio first", "err"); return; }
-  setStatus("clone-status", "transcribing with Whisper…", "");
-  const fd = new FormData();
-  fd.append("audio", refAudioFile);
-  try {
-    const r = await fetch("/api/stt", { method: "POST", body: fd });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
-    $("transcript").value = d.text;
-    setStatus("clone-status", `transcribed (${d.language}, ${d.duration_sec}s)`, "ok");
-  } catch (e) {
-    setStatus("clone-status", "error: " + e.message, "err");
-  }
-};
-
-// ---------- save clone ----------
-$("save-clone").onclick = async () => {
-  const name = $("clone-name").value.trim();
-  if (!name) { setStatus("clone-status", "give the profile a name", "err"); return; }
-  const transcript = $("transcript").value.trim();
-  if (!transcript) { setStatus("clone-status", "transcript required (run Whisper or type it)", "err"); return; }
-
-  if (editingId) {
-    setStatus("clone-status", "updating…", "");
-    const fd = new FormData();
-    fd.append("name", name);
-    fd.append("transcript", transcript);
-    fd.append("engines", getEngines("clone-engines").join(","));
-    try {
-      const r = await fetch("/api/voices/" + editingId, { method: "PUT", body: fd });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
-      setStatus("clone-status", "updated", "ok");
-      resetCloneForm();
-      refreshVoices($("model").value);
-    } catch (e) {
-      setStatus("clone-status", "error: " + e.message, "err");
-    }
-    return;
-  }
-
-  if (!refAudioFile) { setStatus("clone-status", "record or upload reference audio first", "err"); return; }
-  setStatus("clone-status", "saving…", "");
-  const fd = new FormData();
-  fd.append("name", name);
-  fd.append("kind", "clone");
-  fd.append("model", "breeze");
-  fd.append("transcript", transcript);
-  fd.append("ref_audio", refAudioFile);
-  fd.append("auto_transcribe", "false");
-  fd.append("engines", getEngines("clone-engines").join(","));
-  try {
-    const r = await fetch("/api/voices", { method: "POST", body: fd });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
-    setStatus("clone-status", "saved", "ok");
-    resetCloneForm();
-    refreshVoices($("model").value);
-  } catch (e) {
-    setStatus("clone-status", "error: " + e.message, "err");
-  }
-};
 
 // ---------- save design ----------
 $("save-design").onclick = async () => {
@@ -2097,3 +1994,316 @@ document.getElementById("ditto-unload").onclick = async () => {
 };
 
 loadDittoStatus();
+
+// ==================== Clone wizard ====================
+let cw = { step: 1, file: null, audioBuffer: null, trimStart: 0, trimEnd: 0, trimmedBlob: null, engines: [], transcript: "", sampleText: "Hello, this is a preview of my voice.", samples: {} };
+let wizAudioCtx = null;
+let wizDrag = null;
+
+function openCloneWizard() {
+  cw = { step: 1, file: null, audioBuffer: null, trimStart: 0, trimEnd: 0, trimmedBlob: null, engines: [], transcript: "", sampleText: "Hello, this is a preview of my voice.", samples: {} };
+  document.getElementById("wiz-file").value = "";
+  document.getElementById("wiz-transcript").value = "";
+  document.getElementById("wiz-sample-text").value = cw.sampleText;
+  document.getElementById("wiz-name").value = "";
+  document.getElementById("wiz-samples").innerHTML = "";
+  document.getElementById("wiz-wave-wrap").style.display = "none";
+  document.getElementById("wiz-status").textContent = "";
+  goWizStep(1);
+  document.getElementById("clone-wizard").style.display = "flex";
+}
+
+function goWizStep(n) {
+  cw.step = n;
+  document.querySelectorAll(".wiz-step").forEach(s => {
+    const sn = parseInt(s.dataset.step, 10);
+    s.classList.toggle("active", sn === n);
+    s.classList.toggle("done", sn < n);
+  });
+  document.querySelectorAll(".wiz-panel").forEach(p => p.classList.remove("active"));
+  const panel = document.getElementById("wiz-panel-" + n);
+  if (panel) panel.classList.add("active");
+  document.getElementById("wiz-back").style.display = n > 1 ? "" : "none";
+  const nb = document.getElementById("wiz-next");
+  nb.textContent = { 1: "Next", 2: "Save trim", 3: "Process (Whisper)", 4: "Done", 5: "Next", 6: "Save voice clone" }[n] || "Next";
+  if (n === 3) renderWizEngines();
+  if (n === 6) renderWizSamples();
+}
+
+function wizNext() {
+  const st = document.getElementById("wiz-status");
+  st.textContent = "";
+  if (cw.step === 1) goWizStep(2);
+  else if (cw.step === 2) {
+    if (!cw.audioBuffer) { st.textContent = "Upload an audio file first."; return; }
+    cw.trimmedBlob = makeTrimmedWav();
+    cw.samples = {};
+    renderWizEngines();
+    goWizStep(3);
+  } else if (cw.step === 3) {
+    if (!cw.engines.length) { st.textContent = "Select at least one engine."; return; }
+    wizTranscribe();
+  } else if (cw.step === 4) {
+    cw.transcript = document.getElementById("wiz-transcript").value.trim();
+    goWizStep(5);
+  } else if (cw.step === 5) {
+    cw.sampleText = document.getElementById("wiz-sample-text").value.trim();
+    if (!cw.sampleText) { st.textContent = "Sample text is empty."; return; }
+    goWizStep(6);
+  } else if (cw.step === 6) {
+    wizSave();
+  }
+}
+
+function wizBack() { if (cw.step > 1) goWizStep(cw.step - 1); }
+
+// ---- step 2: upload + waveform + trim ----
+document.getElementById("wiz-file").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try {
+    if (!wizAudioCtx) wizAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await f.arrayBuffer();
+    cw.audioBuffer = await wizAudioCtx.decodeAudioData(buf);
+    cw.file = f;
+    cw.trimStart = 0;
+    cw.trimEnd = cw.audioBuffer.duration;
+    document.getElementById("wiz-wave-wrap").style.display = "";
+    document.getElementById("wiz-duration").textContent = cw.audioBuffer.duration.toFixed(1) + "s";
+    drawWaveform();
+  } catch (err) {
+    document.getElementById("wiz-status").textContent = "Couldn't decode audio: " + err.message;
+  }
+});
+
+function drawWaveform() {
+  const canvas = document.getElementById("wiz-wave");
+  if (!cw.audioBuffer) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width, h = canvas.height;
+  const data = cw.audioBuffer.getChannelData(0);
+  const n = data.length;
+  const dur = cw.audioBuffer.duration;
+  ctx.clearRect(0, 0, w, h);
+  const step = Math.max(1, Math.floor(n / w));
+  ctx.fillStyle = "#5b8def";
+  for (let x = 0; x < w; x++) {
+    let mn = 1, mx = -1;
+    const s0 = x * step;
+    for (let i = s0; i < Math.min(s0 + step, n); i++) {
+      if (data[i] < mn) mn = data[i];
+      if (data[i] > mx) mx = data[i];
+    }
+    const y1 = (1 - mx) * h / 2, y2 = (1 - mn) * h / 2;
+    ctx.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+  }
+  const sx = (cw.trimStart / dur) * w;
+  const ex = ((cw.trimEnd || dur) / dur) * w;
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fillRect(0, 0, sx, h);
+  ctx.fillRect(ex, 0, w - ex, h);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#2ecc71"; ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, h); ctx.stroke();
+  ctx.strokeStyle = "#e74c3c"; ctx.beginPath(); ctx.moveTo(ex, 0); ctx.lineTo(ex, h); ctx.stroke();
+  updateTrimLabels();
+}
+
+function updateTrimLabels() {
+  document.getElementById("wiz-trim-start").textContent = (cw.trimStart || 0).toFixed(1) + "s";
+  document.getElementById("wiz-trim-end").textContent = (cw.trimEnd || (cw.audioBuffer ? cw.audioBuffer.duration : 0)).toFixed(1) + "s";
+}
+
+(function initWaveDrag() {
+  const canvas = document.getElementById("wiz-wave");
+  const pos = (e) => { const r = canvas.getBoundingClientRect(); return ((e.clientX - r.left) / r.width) * canvas.width; };
+  canvas.addEventListener("mousedown", (e) => {
+    if (!cw.audioBuffer) return;
+    const w = canvas.width, dur = cw.audioBuffer.duration;
+    const x = pos(e);
+    const sx = (cw.trimStart / dur) * w, ex = ((cw.trimEnd || dur) / dur) * w;
+    if (Math.abs(x - sx) < 14) wizDrag = "start";
+    else if (Math.abs(x - ex) < 14) wizDrag = "end";
+    else wizDrag = null;
+  });
+  canvas.addEventListener("mousemove", (e) => {
+    if (!wizDrag || !cw.audioBuffer) return;
+    const dur = cw.audioBuffer.duration;
+    const t = Math.max(0, Math.min(dur, (pos(e) / canvas.width) * dur));
+    if (wizDrag === "start") cw.trimStart = Math.min(t, cw.trimEnd || dur);
+    else if (wizDrag === "end") cw.trimEnd = Math.max(t, cw.trimStart);
+    drawWaveform();
+  });
+  window.addEventListener("mouseup", () => { wizDrag = null; });
+})();
+
+function makeTrimmedWav() {
+  const buf = cw.audioBuffer;
+  const sr = buf.sampleRate;
+  const s0 = Math.floor(cw.trimStart * sr);
+  const s1 = Math.floor((cw.trimEnd || buf.duration) * sr);
+  const len = Math.max(1, s1 - s0);
+  const trimmed = new Float32Array(len);
+  trimmed.set(buf.getChannelData(0).subarray(s0, s1));
+  return floatToWav(trimmed, sr);
+}
+
+function floatToWav(samples, sr) {
+  const numCh = 1, len = samples.length * numCh * 2;
+  const ab = new ArrayBuffer(44 + len), v = new DataView(ab);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + len, true); ws(8, "WAVE");
+  ws(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, numCh, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * numCh * 2, true); v.setUint16(32, numCh * 2, true); v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, len, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([ab], { type: "audio/wav" });
+}
+
+// ---- step 3: engines ----
+function renderWizEngines() {
+  const box = document.getElementById("wiz-engines");
+  box.innerHTML = "";
+  const dur = cw.audioBuffer ? (cw.trimEnd || cw.audioBuffer.duration) - cw.trimStart : 0;
+  const engs = [
+    { name: "breeze", max: 60, note: "up to 60s (5-10s advised)" },
+    { name: "omnivoice", max: 9, note: "trims to 9s" },
+    { name: "lux", max: 5, note: "uses ~5s" },
+  ];
+  const compatible = [];
+  for (const e of engs) {
+    const ok = dur <= e.max;
+    const label = document.createElement("label");
+    label.className = "checkbox-label";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = e.name; cb.checked = ok && cw.engines.includes(e.name);
+    cb.addEventListener("change", () => {
+      const idx = cw.engines.indexOf(e.name);
+      if (cb.checked && idx < 0) cw.engines.push(e.name);
+      else if (!cb.checked && idx >= 0) cw.engines.splice(idx, 1);
+    });
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(" " + e.name + (ok ? "" : "  (clip too long - " + e.note + ")")));
+    box.appendChild(label);
+    if (ok) compatible.push(e.name);
+  }
+  if (!cw.engines.length) cw.engines = compatible.slice();
+}
+
+// ---- step 3->4: transcribe ----
+async function wizTranscribe() {
+  const st = document.getElementById("wiz-status");
+  if (!cw.trimmedBlob) { st.textContent = "No trimmed audio."; return; }
+  st.textContent = "Transcribing with Whisper…";
+  const fd = new FormData();
+  fd.append("audio", cw.trimmedBlob, "ref.wav");
+  try {
+    const r = await fetch("/api/stt", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    cw.transcript = d.text || "";
+    document.getElementById("wiz-transcript").value = cw.transcript;
+    st.textContent = "Transcribed.";
+    goWizStep(4);
+  } catch (e) {
+    st.textContent = "Transcribe error: " + e.message;
+  }
+}
+
+// ---- step 6: samples + save ----
+function renderWizSamples() {
+  const box = document.getElementById("wiz-samples");
+  box.innerHTML = '<div class="row actions"><button id="wiz-gen" class="primary">Generate samples</button></div>';
+  document.getElementById("wiz-gen").onclick = wizGenerateSamples;
+  for (const [eng, s] of Object.entries(cw.samples)) {
+    addWizSample(eng, s.url, s.error);
+  }
+}
+
+async function wizGenerateSamples() {
+  const st = document.getElementById("wiz-status");
+  const name = document.getElementById("wiz-name").value.trim();
+  if (!name) { st.textContent = "Give the voice a name first."; return; }
+  const text = cw.sampleText || "Hello, this is a preview of my voice.";
+  st.textContent = "Generating samples…";
+  cw.samples = {};
+  for (const eng of cw.engines) {
+    const fd = new FormData();
+    fd.append("text", text);
+    fd.append("model", eng);
+    fd.append("ref_audio", cw.trimmedBlob, "ref.wav");
+    fd.append("ref_text", cw.transcript || "");
+    try {
+      const r = await fetch("/api/tts/sample", { method: "POST", body: fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+      cw.samples[eng] = { url: d.audio_url, error: null };
+    } catch (e) {
+      cw.samples[eng] = { url: null, error: e.message };
+    }
+  }
+  renderWizSamples();
+  st.textContent = "Done. Listen and pick the good ones.";
+}
+
+function addWizSample(eng, url, err) {
+  const box = document.getElementById("wiz-samples");
+  const row = document.createElement("div");
+  row.className = "wiz-sample";
+  const head = document.createElement("div");
+  head.className = "wiz-sample-head";
+  const lbl = document.createElement("label");
+  lbl.className = "checkbox-label";
+  const cb = document.createElement("input");
+  cb.type = "checkbox"; cb.className = "wiz-pick"; cb.dataset.eng = eng; cb.checked = true;
+  lbl.appendChild(cb);
+  lbl.appendChild(document.createTextNode(" " + eng));
+  head.appendChild(lbl);
+  if (url) {
+    const a = document.createElement("audio");
+    a.controls = true; a.src = url;
+    head.appendChild(a);
+  } else {
+    const sp = document.createElement("span");
+    sp.className = "hint"; sp.textContent = "failed: " + (err || "error");
+    head.appendChild(sp);
+  }
+  row.appendChild(head);
+  box.appendChild(row);
+}
+
+async function wizSave() {
+  const st = document.getElementById("wiz-status");
+  const name = document.getElementById("wiz-name").value.trim();
+  if (!name) { st.textContent = "Give the voice a name."; return; }
+  const picked = [...document.querySelectorAll("#wiz-samples .wiz-pick:checked")].map(cb => cb.dataset.eng);
+  if (!picked.length) { st.textContent = "Select at least one engine to save."; return; }
+  st.textContent = "Saving…";
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("kind", "clone");
+  fd.append("model", picked[0]);
+  fd.append("transcript", cw.transcript || "");
+  fd.append("ref_audio", cw.trimmedBlob, "ref.wav");
+  fd.append("auto_transcribe", "false");
+  fd.append("engines", picked.join(","));
+  try {
+    const r = await fetch("/api/voices", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    st.textContent = "Saved.";
+    document.getElementById("clone-wizard").style.display = "none";
+    refreshVoices($("model").value);
+  } catch (e) {
+    st.textContent = "Save error: " + e.message;
+  }
+}
+
+document.getElementById("clone-add").onclick = openCloneWizard;
+document.getElementById("wiz-next").onclick = wizNext;
+document.getElementById("wiz-back").onclick = wizBack;
+document.getElementById("wiz-cancel").onclick = () => { document.getElementById("clone-wizard").style.display = "none"; };

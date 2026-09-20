@@ -1905,6 +1905,47 @@ def create_app(config: dict) -> FastAPI:
             "model": result["model"],
         }
 
+    @app.post("/api/tts/sample")
+    async def tts_sample(
+        text: str = Form(""),
+        model: str = Form(""),
+        ref_audio: Optional[UploadFile] = File(None),
+        ref_text: str = Form(""),
+        instruction: str = Form(""),
+    ):
+        """Generate a preview clip from a raw reference audio (before it is saved
+        as a voice profile). Returns the audio URL."""
+        a = app.state.app
+        if not text or not text.strip():
+            raise HTTPException(400, "text required")
+        tmp_path = None
+        if ref_audio is not None:
+            suffix = os.path.splitext(ref_audio.filename or "audio.wav")[1] or ".wav"
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+            tmp.write(await ref_audio.read())
+            tmp.close()
+            tmp_path = tmp.name
+        try:
+            result = a.tts_manager.synthesize(
+                text.strip(), model or "",
+                ref_audio=tmp_path, ref_text=ref_text or "",
+                instruction=instruction or "",
+            )
+        except Exception as e:  # noqa: BLE001
+            if tmp_path and os.path.isfile(tmp_path):
+                os.unlink(tmp_path)
+            raise HTTPException(500, f"tts failed: {e}")
+        if tmp_path and os.path.isfile(tmp_path):
+            os.unlink(tmp_path)
+        return {
+            "ok": True,
+            "audio_url": f"/api/audio/{result['filename']}",
+            "filename": result["filename"],
+            "duration_sec": result["duration_sec"],
+            "sample_rate": result["sample_rate"],
+            "model": result["model"],
+        }
+
     @app.get("/api/voices")
     def voices():
         a = app.state.app

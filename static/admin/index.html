@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yvette - Voice Avatar AI</title>
-<link rel="stylesheet" href="/static/admin/style.css?v=12">
+<link rel="stylesheet" href="/static/admin/style.css?v=13">
 </head>
 <body>
 <header>
@@ -190,46 +190,10 @@
       </div>
 
       <div id="tts-cloning" class="stt-view">
-        <section class="card" id="clone-card">
-          <h2>Voice Cloning <span class="hint">(Breeze - reference audio + exact transcript)</span></h2>
-          <div class="row">
-            <div class="field grow">
-              <label>Profile name</label>
-              <input type="text" id="clone-name" placeholder="e.g. Martin">
-            </div>
-          </div>
-          <div class="row">
-            <div class="field">
-              <label>Source</label>
-              <div class="btn-group">
-                <label class="secondary file-btn">Upload file
-                  <input type="file" id="upload-file" accept="audio/*,video/*" hidden>
-                </label>
-              </div>
-            </div>
-            <div class="field">
-              <label>Reference audio</label>
-              <div id="ref-status" class="status">none</div>
-            </div>
-          </div>
-          <div class="field">
-            <label>Engines <span class="hint">(which TTS engines can use this voice)</span></label>
-            <div class="btn-group" id="clone-engines">
-              <label class="checkbox-label"><input type="checkbox" value="breeze" checked> breeze</label>
-              <label class="checkbox-label"><input type="checkbox" value="omnivoice"> omnivoice</label>
-              <label class="checkbox-label"><input type="checkbox" value="lux"> lux</label>
-              <label class="checkbox-label"><input type="checkbox" value="kokoro"> kokoro</label>
-            </div>
-          </div>
-          <div class="field">
-            <label>Transcript <span class="hint">(exact words of the reference audio - auto-filled by Whisper, editable)</span></label>
-            <textarea id="transcript" rows="3" placeholder="Auto-transcribed, or type the exact words..."></textarea>
-          </div>
+        <section class="card">
+          <h2>Voice Cloning <span class="hint">(reference audio → cloned voice)</span></h2>
           <div class="row actions">
-            <button id="transcribe-btn" class="secondary">Transcribe with Whisper</button>
-            <button id="save-clone" class="primary">Save voice profile</button>
-            <button id="clone-cancel" class="secondary" style="display:none">Cancel</button>
-            <span id="clone-status" class="status"></span>
+            <button id="clone-add" class="primary">Add voice clone</button>
           </div>
         </section>
         <section class="card">
@@ -815,6 +779,84 @@
     </div>
   </div>
 </div>
+<div id="clone-wizard" class="modal" style="display:none">
+  <div class="modal-content clone-wizard-content">
+    <h2>Add voice clone</h2>
+    <div class="wiz-steps" id="wiz-steps">
+      <span class="wiz-step active" data-step="1">Requirements</span>
+      <span class="wiz-step" data-step="2">Audio</span>
+      <span class="wiz-step" data-step="3">Engines</span>
+      <span class="wiz-step" data-step="4">Transcript</span>
+      <span class="wiz-step" data-step="5">Sample text</span>
+      <span class="wiz-step" data-step="6">Generate &amp; save</span>
+    </div>
+
+    <div class="wiz-body">
+      <div class="wiz-panel active" id="wiz-panel-1">
+        <h3>Voice cloning requirements</h3>
+        <ul class="wiz-reqs">
+          <li><strong>breeze</strong> — reference audio + exact transcript. Up to 60s (5–10s advised).</li>
+          <li><strong>omnivoice</strong> — reference audio, auto-trimmed to 9s. Transcript optional.</li>
+          <li><strong>lux</strong> — reference audio only (no transcript). ~5s used by default.</li>
+          <li><strong>kokoro</strong> — no cloning (fixed preset voices).</li>
+        </ul>
+        <p class="hint">Tip: clean speech, minimal background noise, no looping.</p>
+      </div>
+
+      <div class="wiz-panel" id="wiz-panel-2">
+        <h3>Upload &amp; trim reference audio</h3>
+        <div class="field">
+          <label>Audio file</label>
+          <input type="file" id="wiz-file" accept="audio/*">
+        </div>
+        <div class="wiz-wave-wrap" id="wiz-wave-wrap" style="display:none">
+          <div class="wiz-wave-info">Duration: <span id="wiz-duration">0.0s</span></div>
+          <canvas id="wiz-wave" width="860" height="140"></canvas>
+          <div class="wiz-trim-info">
+            <span>Start: <span id="wiz-trim-start">0.0s</span></span>
+            <span>End: <span id="wiz-trim-end">0.0s</span></span>
+          </div>
+          <p class="hint">Drag the green (start) and red (end) handles to trim.</p>
+        </div>
+      </div>
+
+      <div class="wiz-panel" id="wiz-panel-3">
+        <h3>Compatible engines</h3>
+        <p class="hint">Select which engines should get this clone.</p>
+        <div class="btn-group" id="wiz-engines"></div>
+      </div>
+
+      <div class="wiz-panel" id="wiz-panel-4">
+        <h3>Transcript</h3>
+        <p class="hint">Whisper transcription — edit if needed (breeze needs the exact words).</p>
+        <textarea id="wiz-transcript" rows="7"></textarea>
+      </div>
+
+      <div class="wiz-panel" id="wiz-panel-5">
+        <h3>Sample text</h3>
+        <p class="hint">Text used to generate a preview clip for each engine.</p>
+        <textarea id="wiz-sample-text" rows="3">Hello, this is a preview of my voice.</textarea>
+      </div>
+
+      <div class="wiz-panel" id="wiz-panel-6">
+        <h3>Generate &amp; save</h3>
+        <div class="field">
+          <label>Voice name</label>
+          <input type="text" id="wiz-name" placeholder="e.g. Martin">
+        </div>
+        <div id="wiz-samples"></div>
+      </div>
+    </div>
+
+    <div class="row actions wiz-footer">
+      <button id="wiz-back" class="secondary">Back</button>
+      <button id="wiz-next" class="primary">Next</button>
+      <button id="wiz-cancel" class="secondary">Cancel</button>
+      <span id="wiz-status" class="status"></span>
+    </div>
+  </div>
+</div>
+
 
 <div id="llm-modal" class="modal" style="display:none">
   <div class="modal-content">
@@ -930,6 +972,6 @@
   </div>
 </div>
 
-<script src="/static/admin/app.js?v=43"></script>
+<script src="/static/admin/app.js?v=44"></script>
 </body>
 </html>
