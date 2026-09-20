@@ -750,10 +750,25 @@ function renderSTTStatus(d) {
   }
 }
 
+let sttPollTimer = null;
+function pollSTTStatus() {
+  if (sttPollTimer) clearInterval(sttPollTimer);
+  let attempts = 0;
+  sttPollTimer = setInterval(async () => {
+    try {
+      const d = await (await fetch("/api/stt/status")).json();
+      renderSTTStatus(d);
+      if (d.loaded || ++attempts >= 45) { clearInterval(sttPollTimer); sttPollTimer = null; }
+    } catch (e) {
+      if (++attempts >= 45) { clearInterval(sttPollTimer); sttPollTimer = null; }
+    }
+  }, 2000);
+}
+
 document.getElementById("stt-load").onclick = async () => {
   try {
     await fetch("/api/stt/load", { method: "POST" });
-    setTimeout(loadSTTStatus, 2000);
+    pollSTTStatus();
   } catch (e) {}
 };
 
