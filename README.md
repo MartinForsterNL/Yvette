@@ -8,6 +8,12 @@ Whether you want a sharp assistant to get things done or an AI girlfriend
 to keep you company, you can have it all - pick the voice, the face, and
 the personality that feels right. Make it yours.
 
+## Demo
+
+[![Watch the Yvette demo](https://img.youtube.com/vi/pK3GywJhqTc/hqdefault.jpg)](https://youtu.be/pK3GywJhqTc)
+
+A full walkthrough - the talking avatar, voice cloning, and a tight 8 GB setup.
+
 ## What it does
 
 - **Talk to it** - hold the button and speak, or just type. It replies with a
@@ -52,13 +58,16 @@ the personality that feels right. Make it yours.
 
 - Windows 10 or 11
 - An NVIDIA GPU (CUDA-capable). Ampere or newer (RTX 30/40/50 series) is
-  recommended. 12 GB VRAM minimum.
+  recommended. 12 GB VRAM minimum, but it can run tight on 8 GB.
 - About 60 GB of free disk space
 - An external LLM server (LM Studio, Ollama, llama.cpp, vLLM, etc.) running a
   chat model, exposed over an OpenAI-compatible API.
 
 10 - 12 GB works pretty nicely but 24 GB VRAM is recommended to get the best quality.
 This includes the LLM server. Yvette Voice Avatar AI itself can run in about 6 - 7 GB of VRAM, and the LLM runs on top of that.
+
+It can even run tight on 8 GB - keep a small model loaded and put Whisper/Kokoro
+on the CPU (shown in the demo video).
 
 The full software prerequisites (Python, CUDA, cuDNN, TensorRT) are listed in
 install-readme.md.
