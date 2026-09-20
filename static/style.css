@@ -274,8 +274,6 @@ h1 { font-size: 20px; margin: 0; color: var(--text); }
   background: color-mix(in srgb, #ffffff var(--bubble-opacity), transparent);
   border: 1px solid color-mix(in srgb, var(--border) var(--bubble-opacity), transparent);
   color: #000;
-  font-size: 12px;
-  font-style: italic;
   border-bottom-left-radius: 4px;
 }
 .download-link {
