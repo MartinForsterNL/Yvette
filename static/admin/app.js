@@ -411,55 +411,16 @@ async function deleteProfile(id) {
 function editProfile(id) {
   const v = voices.find(x => x.id === id);
   if (!v) return;
-  editingId = id;
   if (v.kind === "design") {
-    $("design-name").value = v.name || "";
-    $("design-desc").value = v.instruction || "";
-    setEngines("design-engines", v.engines || [v.model || "breeze"]);
-    $("save-design").textContent = "Update profile";
-    $("design-cancel").style.display = "";
-    $("design-card").scrollIntoView({ behavior: "smooth" });
+    openDesignWizard(v);
   }
 }
 
-function resetDesignForm() {
-  editingId = null;
-  $("design-name").value = "";
-  $("design-desc").value = "";
-  $("save-design").textContent = "Save voice profile";
-  $("design-cancel").style.display = "none";
-  setEngines("design-engines", ["breeze"]);
-}
-
-$("design-cancel").onclick = resetDesignForm;
 
 
 
-// ---------- save design ----------
-$("save-design").onclick = async () => {
-  const name = $("design-name").value.trim();
-  const desc = $("design-desc").value.trim();
-  if (!name) { setStatus("design-status", "give the profile a name", "err"); return; }
-  if (!desc) { setStatus("design-status", "description required", "err"); return; }
-  setStatus("design-status", editingId ? "updating…" : "saving…", "");
-  const fd = new FormData();
-  fd.append("name", name);
-  fd.append("instruction", desc);
-  fd.append("engines", getEngines("design-engines").join(","));
-  if (!editingId) { fd.append("kind", "design"); fd.append("model", "breeze"); }
-  try {
-    const url = editingId ? "/api/voices/" + editingId : "/api/voices";
-    const method = editingId ? "PUT" : "POST";
-    const r = await fetch(url, { method, body: fd });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
-    setStatus("design-status", editingId ? "updated" : "saved", "ok");
-    resetDesignForm();
-    refreshVoices($("model").value);
-  } catch (e) {
-    setStatus("design-status", "error: " + e.message, "err");
-  }
-};
+
+
 
 function setStatus(id, msg, cls) {
   const el = $(id);
@@ -2330,3 +2291,181 @@ document.getElementById("clone-add").onclick = openCloneWizard;
 document.getElementById("wiz-next").onclick = wizNext;
 document.getElementById("wiz-back").onclick = wizBack;
 document.getElementById("wiz-cancel").onclick = () => { document.getElementById("clone-wizard").style.display = "none"; };
+
+// ==================== Design wizard ====================
+const OMNIVOICE_ATTRS = [
+  { cat: "Gender", opts: [["Male","Male"],["Female","Female"]] },
+  { cat: "Age", opts: [["Child","Child"],["Teenager","Teenager"],["Young Adult","Young Adult"],["Middle-aged","Middle-aged"],["Elderly","Elderly"]] },
+  { cat: "Pitch", opts: [["Very Low","Very Low Pitch"],["Low","Low Pitch"],["Moderate","Moderate Pitch"],["High","High Pitch"],["Very High","Very High Pitch"]] },
+  { cat: "Style", opts: [["Whisper","Whisper"]] },
+  { cat: "English Accent", opts: [["American","American Accent"],["Australian","Australian Accent"],["British","British Accent"],["Chinese","Chinese Accent"],["Canadian","Canadian Accent"],["Indian","Indian Accent"],["Korean","Korean Accent"],["Portuguese","Portuguese Accent"],["Russian","Russian Accent"],["Japanese","Japanese Accent"]] },
+  { cat: "Chinese Dialect", opts: [["Henan","河南话"],["Shaanxi","陕西话"],["Sichuan","四川话"],["Guizhou","贵州话"],["Yunnan","云南话"],["Guilin","桂林话"],["Jinan","济南话"],["Shijiazhuang","石家庄话"],["Gansu","甘肃话"],["Ningxia","宁夏话"],["Qingdao","青岛话"],["Northeast","东北话"]] },
+];
+
+let dw = { step: 1, engine: "breeze", instruction: "", sampleText: "Hello, this is a preview of my designed voice.", sampleUrl: null, name: "", editingId: null };
+
+function openDesignWizard(editing) {
+  dw = { step: 1, engine: "breeze", instruction: "", sampleText: "Hello, this is a preview of my designed voice.", sampleUrl: null, name: "", editingId: editing ? editing.id : null };
+  document.getElementById("dwiz-free").value = "";
+  document.getElementById("dwiz-name").value = "";
+  document.getElementById("dwiz-sample-text").value = dw.sampleText;
+  document.getElementById("dwiz-audio").innerHTML = "";
+  document.getElementById("dwiz-status").textContent = "";
+  renderDwizAttrs();
+  if (editing) {
+    dw.engine = (editing.model === "omnivoice") ? "omnivoice" : "breeze";
+    dw.instruction = editing.instruction || "";
+    dw.name = editing.name || "";
+    document.getElementById("dwiz-name").value = dw.name;
+    if (dw.engine === "breeze") {
+      document.getElementById("dwiz-free").value = dw.instruction;
+    } else {
+      const parts = dw.instruction.split(",").map(s => s.trim());
+      document.querySelectorAll("#dwiz-attrs input[type=checkbox]").forEach(cb => { cb.checked = parts.includes(cb.value); });
+    }
+  }
+  const radio = document.querySelector('input[name="dwiz-engine"][value="' + dw.engine + '"]');
+  if (radio) radio.checked = true;
+  toggleDwizInput();
+  goDwizStep(1);
+  document.getElementById("design-wizard").style.display = "flex";
+}
+
+function goDwizStep(n) {
+  dw.step = n;
+  document.querySelectorAll("#dwiz-steps .wiz-step").forEach(s => {
+    const sn = parseInt(s.dataset.step, 10);
+    s.classList.toggle("active", sn === n);
+    s.classList.toggle("done", sn < n);
+  });
+  document.querySelectorAll("#design-wizard .wiz-panel").forEach(p => p.classList.remove("active"));
+  const panel = document.getElementById("dwiz-panel-" + n);
+  if (panel) panel.classList.add("active");
+  document.getElementById("dwiz-back").style.display = n > 1 ? "" : "none";
+  document.getElementById("dwiz-next").textContent = { 1: "Next", 2: "Next", 3: "Next", 4: "Save voice design" }[n] || "Next";
+}
+
+function dwizNext() {
+  const st = document.getElementById("dwiz-status");
+  st.textContent = "";
+  if (dw.step === 1) goDwizStep(2);
+  else if (dw.step === 2) {
+    dw.instruction = buildDwizInstruct();
+    if (!dw.instruction) { st.textContent = "Enter a description or select attributes."; return; }
+    goDwizStep(3);
+  }
+  else if (dw.step === 3) {
+    dw.sampleText = document.getElementById("dwiz-sample-text").value.trim();
+    if (!dw.sampleText) { st.textContent = "Sample text is empty."; return; }
+    goDwizStep(4);
+  }
+  else if (dw.step === 4) dwizSave();
+}
+
+function dwizBack() { if (dw.step > 1) goDwizStep(dw.step - 1); }
+
+document.querySelectorAll('input[name="dwiz-engine"]').forEach(r => r.addEventListener("change", () => {
+  dw.engine = document.querySelector('input[name="dwiz-engine"]:checked').value;
+  toggleDwizInput();
+}));
+
+function toggleDwizInput() {
+  const isBreeze = dw.engine === "breeze";
+  document.getElementById("dwiz-free-field").style.display = isBreeze ? "" : "none";
+  document.getElementById("dwiz-attr-field").style.display = isBreeze ? "none" : "";
+}
+
+function renderDwizAttrs() {
+  const box = document.getElementById("dwiz-attrs");
+  box.innerHTML = "";
+  for (const g of OMNIVOICE_ATTRS) {
+    const h = document.createElement("div");
+    h.className = "hint"; h.textContent = g.cat; h.style.marginTop = "8px"; h.style.fontWeight = "600";
+    box.appendChild(h);
+    const row = document.createElement("div");
+    row.className = "btn-group";
+    for (const [label, val] of g.opts) {
+      const l = document.createElement("label");
+      l.className = "checkbox-label";
+      const cb = document.createElement("input");
+      cb.type = "checkbox"; cb.value = val;
+      l.appendChild(cb);
+      l.appendChild(document.createTextNode(" " + label));
+      row.appendChild(l);
+    }
+    box.appendChild(row);
+  }
+}
+
+function buildDwizInstruct() {
+  if (dw.engine === "breeze") return document.getElementById("dwiz-free").value.trim();
+  const sel = [...document.querySelectorAll("#dwiz-attrs input[type=checkbox]:checked")].map(cb => cb.value);
+  return sel.join(", ");
+}
+
+async function dwizGenerate() {
+  const st = document.getElementById("dwiz-sample-status");
+  const inst = buildDwizInstruct();
+  const text = document.getElementById("dwiz-sample-text").value.trim();
+  if (!inst) { st.textContent = "No design input."; return; }
+  if (!text) { st.textContent = "Sample text empty."; return; }
+  const btn = document.getElementById("dwiz-gen");
+  btn.disabled = true; btn.textContent = "Generating…";
+  st.textContent = "Generating…";
+  const fd = new FormData();
+  fd.append("text", text);
+  fd.append("model", dw.engine);
+  fd.append("instruction", inst);
+  try {
+    const r = await fetch("/api/tts/sample", { method: "POST", body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    dw.sampleUrl = d.audio_url;
+    const box = document.getElementById("dwiz-audio");
+    box.innerHTML = "";
+    const a = document.createElement("audio");
+    a.controls = true; a.src = d.audio_url;
+    box.appendChild(a);
+    st.textContent = "Done.";
+  } catch (e) {
+    st.textContent = "Generate error: " + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = "Generate sample";
+  }
+}
+
+async function dwizSave() {
+  const st = document.getElementById("dwiz-status");
+  const name = document.getElementById("dwiz-name").value.trim();
+  if (!name) { st.textContent = "Give the voice a name."; return; }
+  const inst = buildDwizInstruct();
+  if (!inst) { st.textContent = "No design input."; return; }
+  st.textContent = "Saving…";
+  const fd = new FormData();
+  fd.append("name", name);
+  fd.append("instruction", inst);
+  fd.append("engines", dw.engine);
+  try {
+    let r;
+    if (dw.editingId) {
+      r = await fetch("/api/voices/" + dw.editingId, { method: "PUT", body: fd });
+    } else {
+      fd.append("kind", "design");
+      fd.append("model", dw.engine);
+      r = await fetch("/api/voices", { method: "POST", body: fd });
+    }
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || d.error || JSON.stringify(d));
+    st.textContent = "Saved.";
+    document.getElementById("design-wizard").style.display = "none";
+    refreshVoices($("model").value);
+  } catch (e) {
+    st.textContent = "Save error: " + e.message;
+  }
+}
+
+document.getElementById("design-add").onclick = () => openDesignWizard(null);
+document.getElementById("dwiz-next").onclick = dwizNext;
+document.getElementById("dwiz-back").onclick = dwizBack;
+document.getElementById("dwiz-cancel").onclick = () => { document.getElementById("design-wizard").style.display = "none"; };
+document.getElementById("dwiz-gen").onclick = dwizGenerate;

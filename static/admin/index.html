@@ -203,31 +203,10 @@
       </div>
 
       <div id="tts-design" class="stt-view">
-        <section class="card" id="design-card">
-          <h2>Voice Design <span class="hint">(Breeze - voice from a text description, no reference audio)</span></h2>
-          <div class="row">
-            <div class="field grow">
-              <label>Profile name</label>
-              <input type="text" id="design-name" placeholder="e.g. Narrator">
-            </div>
-          </div>
-          <div class="field">
-            <label>Engines <span class="hint">(which TTS engines can use this voice)</span></label>
-            <div class="btn-group" id="design-engines">
-              <label class="checkbox-label"><input type="checkbox" value="breeze" checked> breeze</label>
-              <label class="checkbox-label"><input type="checkbox" value="omnivoice"> omnivoice</label>
-              <label class="checkbox-label"><input type="checkbox" value="lux"> lux</label>
-              <label class="checkbox-label"><input type="checkbox" value="kokoro"> kokoro</label>
-            </div>
-          </div>
-          <div class="field">
-            <label>Description</label>
-            <textarea id="design-desc" rows="3" placeholder="e.g. A warm, thoughtful young woman with a clear voice and a calm, reflective delivery."></textarea>
-          </div>
+        <section class="card">
+          <h2>Voice Design <span class="hint">(voice from a description / attributes, no reference audio)</span></h2>
           <div class="row actions">
-            <button id="save-design" class="primary">Save voice profile</button>
-            <button id="design-cancel" class="secondary" style="display:none">Cancel</button>
-            <span id="design-status" class="status"></span>
+            <button id="design-add" class="primary">Add voice design</button>
           </div>
         </section>
         <section class="card">
@@ -779,6 +758,77 @@
     </div>
   </div>
 </div>
+
+<div id="design-wizard" class="modal" style="display:none">
+  <div class="modal-content clone-wizard-content">
+    <h2>Add voice design</h2>
+    <div class="wiz-steps" id="dwiz-steps">
+      <span class="wiz-step active" data-step="1">Requirements</span>
+      <span class="wiz-step" data-step="2">Design</span>
+      <span class="wiz-step" data-step="3">Sample</span>
+      <span class="wiz-step" data-step="4">Save</span>
+    </div>
+
+    <div class="wiz-body">
+      <div class="wiz-panel active" id="dwiz-panel-1">
+        <h3>Voice design requirements</h3>
+        <ul class="wiz-reqs">
+          <li><strong>breeze</strong> — a free-text natural-language description.</li>
+          <li><strong>omnivoice</strong> — a set of voice attributes (gender, age, pitch, style, accent).</li>
+          <li><strong>lux / kokoro</strong> — no design.</li>
+        </ul>
+      </div>
+
+      <div class="wiz-panel" id="dwiz-panel-2">
+        <h3>Design</h3>
+        <div class="field">
+          <label>Engine</label>
+          <div class="btn-group" id="dwiz-engine">
+            <label class="checkbox-label"><input type="radio" name="dwiz-engine" value="breeze" checked> breeze (free text)</label>
+            <label class="checkbox-label"><input type="radio" name="dwiz-engine" value="omnivoice"> omnivoice (attributes)</label>
+          </div>
+        </div>
+        <div class="field" id="dwiz-free-field">
+          <label>Description <span class="hint">(free text)</span></label>
+          <textarea id="dwiz-free" rows="3" placeholder="A warm, thoughtful young woman with a clear, calm voice."></textarea>
+        </div>
+        <div class="field" id="dwiz-attr-field" style="display:none">
+          <label>Attributes</label>
+          <div id="dwiz-attrs"></div>
+        </div>
+      </div>
+
+      <div class="wiz-panel" id="dwiz-panel-3">
+        <h3>Sample</h3>
+        <div class="field">
+          <label>Sample text</label>
+          <textarea id="dwiz-sample-text" rows="3">Hello, this is a preview of my designed voice.</textarea>
+        </div>
+        <div class="row actions">
+          <button id="dwiz-gen" class="primary">Generate sample</button>
+          <span id="dwiz-sample-status" class="status"></span>
+        </div>
+        <div id="dwiz-audio"></div>
+      </div>
+
+      <div class="wiz-panel" id="dwiz-panel-4">
+        <h3>Save</h3>
+        <div class="field">
+          <label>Voice name</label>
+          <input type="text" id="dwiz-name" placeholder="e.g. Narrator">
+        </div>
+      </div>
+    </div>
+
+    <div class="row actions wiz-footer">
+      <button id="dwiz-back" class="secondary">Back</button>
+      <button id="dwiz-next" class="primary">Next</button>
+      <button id="dwiz-cancel" class="secondary">Cancel</button>
+      <span id="dwiz-status" class="status"></span>
+    </div>
+  </div>
+</div>
+
 <div id="clone-wizard" class="modal" style="display:none">
   <div class="modal-content clone-wizard-content">
     <h2>Add voice clone</h2>
@@ -973,6 +1023,6 @@
   </div>
 </div>
 
-<script src="/static/admin/app.js?v=46"></script>
+<script src="/static/admin/app.js?v=47"></script>
 </body>
 </html>
