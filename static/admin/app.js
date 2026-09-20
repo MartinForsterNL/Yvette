@@ -593,12 +593,35 @@ async function loadSTTSettings() {
     set("stt-model", d.model);
     set("stt-language", d.language || "");
     set("stt-device", d.device);
-    set("stt-compute", d.compute_type);
+    updateComputeOptions(d.device, d.compute_type);
     set("stt-beam", d.beam_size);
     const en = document.getElementById("stt-enabled");
     if (en) en.checked = !!d.enabled;
   } catch (e) {}
 }
+
+const STT_COMPUTE_BY_DEVICE = {
+  cpu: ["float32", "int8"],
+  cuda: ["float16", "float32", "int8", "int8_float16"],
+};
+
+function updateComputeOptions(device, preferred) {
+  const sel = document.getElementById("stt-compute");
+  if (!sel) return;
+  const allowed = STT_COMPUTE_BY_DEVICE[device] || STT_COMPUTE_BY_DEVICE.cuda;
+  sel.innerHTML = "";
+  for (const ct of allowed) {
+    const o = document.createElement("option");
+    o.value = ct; o.textContent = ct;
+    sel.appendChild(o);
+  }
+  if (preferred && allowed.includes(preferred)) sel.value = preferred;
+  else sel.value = allowed[0];
+}
+
+document.getElementById("stt-device").addEventListener("change", () => {
+  updateComputeOptions(document.getElementById("stt-device").value);
+});
 
 async function loadSTTModels() {
   try {

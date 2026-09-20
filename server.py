@@ -1928,8 +1928,8 @@ def create_app(config: dict) -> FastAPI:
     @app.post("/api/personality/default")
     async def save_personality_default(prompt: str = Form("")):
         a = app.state.app
-        prompt = (prompt or "").strip()
-        with open(a.personality_file, "w", encoding="utf-8") as f:
+        prompt = (prompt or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+        with open(a.personality_file, "w", encoding="utf-8", newline="\n") as f:
             f.write(prompt + "\n")
         a._reload_personalities()
         return {"ok": True}
@@ -1948,8 +1948,8 @@ def create_app(config: dict) -> FastAPI:
         if os.path.exists(path):
             raise HTTPException(409, "a personality with this name already exists")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            f.write((prompt or "").strip() + "\n")
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write((prompt or "").replace("\r\n", "\n").replace("\r", "\n").strip() + "\n")
         a._reload_personalities()
         return {"id": name, "name": name}
 
@@ -1967,8 +1967,8 @@ def create_app(config: dict) -> FastAPI:
             raise HTTPException(404, "personality not found")
         if new_name != old and os.path.exists(new_path):
             raise HTTPException(409, "a personality with this name already exists")
-        with open(new_path, "w", encoding="utf-8") as f:
-            f.write((prompt or "").strip() + "\n")
+        with open(new_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write((prompt or "").replace("\r\n", "\n").replace("\r", "\n").strip() + "\n")
         if new_name != old:
             os.remove(old_path)
         a._reload_personalities()
