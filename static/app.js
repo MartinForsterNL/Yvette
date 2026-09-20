@@ -752,7 +752,7 @@ $("text-input").addEventListener("keydown", (e) => {
 });
 
 function currentProfile() {
-  return $("personality").value || "default";
+  return (activeProfile && activeProfile !== "custom") ? activeProfile : "default";
 }
 
 function renderHistory(turns) {

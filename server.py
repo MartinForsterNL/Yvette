@@ -894,7 +894,7 @@ class TalkApp:
         self._save_history(profile, turns)
 
     def _clear_history(self, profile: str):
-        for turn in self._load_history(profile):
+        for turn in self._load_history(session):
             self._delete_turn_files(turn)
         path = self._history_path(profile)
         try:
@@ -1220,7 +1220,7 @@ class TalkApp:
         if pending:
             on_chunk(" ".join(pending).strip())
 
-    def _build_messages(self, profile: str, user_text: str, mem_block: str, image: str = None, skill: str = "", instruction_id: str = "", file_content: str = "", file_name: str = "", model_name: str = ""):
+    def _build_messages(self, profile: str, user_text: str, mem_block: str, image: str = None, skill: str = "", instruction_id: str = "", file_content: str = "", file_name: str = "", model_name: str = "", session: str = "default"):
         self._reload_personalities()
         system = self.personalities.get(profile) or self.system_prompt
         if skill:
@@ -1450,15 +1450,15 @@ class TalkApp:
             text = (args.get("text") or "").strip()
             if not text:
                 return "error: nothing to remember"
-            self.memory.add_item(text, profile)
+            self.memory.add_item(text, session)
             return "remembered"
         if name == "memory_search":
-            block = self.memory.search_block(args.get("query", ""), profile)
+            block = self.memory.search_block(args.get("query", ""), session)
             return block or "no relevant memory found"
         if name == "memory_day":
-            return self.memory.read_day(args.get("date", ""), profile)
+            return self.memory.read_day(args.get("date", ""), session)
         if name == "delete_memory":
-            return self.memory.delete_item(args.get("slug", ""), args.get("date"), profile)
+            return self.memory.delete_item(args.get("slug", ""), args.get("date"), session)
         return "unknown tool"
 
     def _resolve_final_answer(self, messages: list, profile: str = "default", model_name: str = "", turn: dict = None, session: str = "default"):
@@ -1585,8 +1585,8 @@ class TalkApp:
             if not user_text and not file_content:
                 raise RuntimeError("no user text")
 
-            mem_block = self.memory.search_block(user_text, profile)
-            messages = self._build_messages(profile, user_text, mem_block, image_data, skill, instruction_id, file_content, file_name, model_name)
+            mem_block = self.memory.search_block(user_text, session)
+            messages = self._build_messages(profile, user_text, mem_block, image_data, skill, instruction_id, file_content, file_name, model_name, session)
             mode = (mode or self.default_mode or "chunked").lower()
 
             effective_iid = {"value": instruction_id}
@@ -1636,7 +1636,7 @@ class TalkApp:
                     add_sentence(c)
 
             assistant_sentences = [{"text": s["text"], "audio_url": s.get("audio_url"), "video_url": s.get("video_url")} for s in turn["sentences"]]
-            self._update_history(profile, user_text, final_answer, turn_id=turn_id, user_audio_url=turn.get("user_audio_url"), user_image_url=turn.get("user_image_url"), assistant_sentences=assistant_sentences, tool_calls=tool_calls_made)
+            self._update_history(session, user_text, final_answer, turn_id=turn_id, user_audio_url=turn.get("user_audio_url"), user_image_url=turn.get("user_image_url"), assistant_sentences=assistant_sentences, tool_calls=tool_calls_made)
             turn["status"] = "done"
 
             # memory maintenance is batched + single-threaded (see _queue_memory)
