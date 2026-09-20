@@ -235,13 +235,11 @@ function renderProfileList(box, list, emptyMsg) {
         ${v.transcript ? `<div class="hint transcript">“${escapeHtml(v.transcript.slice(0, 120))}${v.transcript.length > 120 ? "…" : ""}”</div>` : ""}
       </div>
       <div class="profile-actions">
-        <button class="secondary test-btn" data-id="${v.id}">Test</button>
-        ${v.kind === "design" ? '<button class="secondary edit-btn" data-id="${v.id}">Edit</button>' : ""}
+
         <button class="danger del-btn" data-id="${v.id}">Delete</button>
       </div>`;
     box.appendChild(row);
   }
-  box.querySelectorAll(".test-btn").forEach(b => b.onclick = () => testProfile(b.dataset.id));
   box.querySelectorAll(".edit-btn").forEach(b => b.onclick = () => editProfile(b.dataset.id));
   box.querySelectorAll(".del-btn").forEach(b => b.onclick = () => deleteProfile(b.dataset.id));
 }
@@ -382,23 +380,6 @@ function addChunk(chunk) {
     if (idx >= 0 && idx + 1 < chunkQueue.length) chunkQueue[idx + 1].play().catch(() => {});
   });
   if (chunkQueue.length === 1) a.play().catch(() => {});
-}
-
-function testProfile(id) {
-  const v = voices.find(x => x.id === id);
-  if (!v) return;
-  $("model").value = v.model || "breeze";
-  onModelChange();
-  // select the profile in the right dropdown (clone -> voice, design -> instruction)
-  if (v.kind === "design") {
-    const instr = $("instruction");
-    [...instr.options].forEach(o => { if (o.value === id) instr.value = id; });
-  } else {
-    const sel = $("voice");
-    [...sel.options].forEach(o => { if (o.value === id) sel.value = id; });
-  }
-  if (!$("text").value.trim()) $("text").value = "This is a test of the voice.";
-  $("generate").click();
 }
 
 async function deleteProfile(id) {
