@@ -942,12 +942,15 @@ class TalkApp:
                 settings = {"speed": float(speed)}
             except (TypeError, ValueError):
                 settings = None
+        default_instruction = self.tts.get("instruction", "")
+        if model != "breeze":
+            default_instruction = ""
         result = self.tts_manager.synthesize(
             text, model,
             voice=voice,
             voice_id=voice_id,
             instruction_id=instruction_id,
-            instruction=self.tts.get("instruction", ""),
+            instruction=default_instruction,
             cfg_scale=self.tts.get("cfg_scale"),
             settings=settings,
         )
