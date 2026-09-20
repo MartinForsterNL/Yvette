@@ -2109,8 +2109,11 @@ function drawWaveform() {
 }
 
 function updateTrimLabels() {
-  document.getElementById("wiz-trim-start").textContent = (cw.trimStart || 0).toFixed(1) + "s";
-  document.getElementById("wiz-trim-end").textContent = (cw.trimEnd || (cw.audioBuffer ? cw.audioBuffer.duration : 0)).toFixed(1) + "s";
+  const start = cw.trimStart || 0;
+  const end = cw.trimEnd || (cw.audioBuffer ? cw.audioBuffer.duration : 0);
+  document.getElementById("wiz-trim-start").textContent = start.toFixed(1) + "s";
+  document.getElementById("wiz-trim-end").textContent = end.toFixed(1) + "s";
+  document.getElementById("wiz-trim-sel").textContent = (end - start).toFixed(1) + "s";
 }
 
 (function initWaveDrag() {
@@ -2246,6 +2249,8 @@ async function wizGenerateSamples() {
   const st = document.getElementById("wiz-status");
   const name = document.getElementById("wiz-name").value.trim();
   if (!name) { st.textContent = "Give the voice a name first."; return; }
+  const genBtn = document.getElementById("wiz-gen");
+  if (genBtn) { genBtn.disabled = true; genBtn.textContent = "Generating…"; }
   const text = cw.sampleText || "Hello, this is a preview of my voice.";
   st.textContent = "Generating samples…";
   cw.samples = {};
