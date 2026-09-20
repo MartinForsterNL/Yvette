@@ -1393,11 +1393,106 @@ loadLlmModels();
 // --- General tab (memory / server / auth / toolcalling) ---
 function genShow(view) {
   document.querySelectorAll("[data-gen-view]").forEach((b) => b.classList.toggle("active", b.dataset.genView === view));
-  ["memory", "server", "auth", "toolcalling"].forEach((v) => {
+  ["memory", "server", "auth", "toolcalling", "skills"].forEach((v) => {
     document.getElementById("gen-" + v).classList.toggle("active", view === v);
   });
 }
 document.querySelectorAll("[data-gen-view]").forEach((b) => b.addEventListener("click", () => genShow(b.dataset.genView)));
+
+let editingSkillName = null;
+
+async function loadSkills() {
+  try {
+    const d = await (await fetch("/api/skills")).json();
+    renderSkillGrid(d.skills || []);
+  } catch (e) {}
+}
+
+function renderSkillGrid(list) {
+  const grid = document.getElementById("skill-grid");
+  if (!grid) return;
+  grid.innerHTML = "";
+  if (!list.length) {
+    grid.innerHTML = '<div class="side-empty">No skills yet. Add one to get started.</div>';
+    return;
+  }
+  for (const s of list) {
+    const row = document.createElement("div");
+    row.className = "profile";
+    const info = document.createElement("div");
+    info.className = "profile-info";
+    const name = document.createElement("strong");
+    name.textContent = s.name;
+    const title = document.createElement("span");
+    title.className = "prompt-snippet";
+    title.textContent = s.title || "";
+    info.appendChild(name); info.appendChild(title);
+    const actions = document.createElement("div");
+    actions.className = "profile-actions";
+    const edit = document.createElement("button");
+    edit.className = "secondary"; edit.textContent = "Edit";
+    edit.onclick = () => openSkillEdit(s.name);
+    const del = document.createElement("button");
+    del.className = "danger"; del.textContent = "Delete";
+    del.onclick = async () => {
+      if (!confirm('Delete skill "' + s.name + '"?')) return;
+      await fetch("/api/skills/" + encodeURIComponent(s.name), { method: "DELETE" });
+      loadSkills();
+    };
+    actions.appendChild(edit); actions.appendChild(del);
+    row.appendChild(info); row.appendChild(actions);
+    grid.appendChild(row);
+  }
+}
+
+function openSkillAdd() {
+  editingSkillName = null;
+  document.getElementById("skill-modal-title").textContent = "Add skill";
+  document.getElementById("skill-name").value = "";
+  document.getElementById("skill-name").disabled = false;
+  document.getElementById("skill-content").value = "";
+  document.getElementById("skill-modal").style.display = "flex";
+}
+
+async function openSkillEdit(name) {
+  editingSkillName = name;
+  document.getElementById("skill-modal-title").textContent = "Edit skill";
+  document.getElementById("skill-name").value = name;
+  document.getElementById("skill-name").disabled = true;
+  document.getElementById("skill-content").value = "";
+  try {
+    const d = await (await fetch("/api/skills/" + encodeURIComponent(name))).json();
+    document.getElementById("skill-content").value = d.content || "";
+  } catch (e) {}
+  document.getElementById("skill-modal").style.display = "flex";
+}
+
+document.getElementById("skill-add").onclick = openSkillAdd;
+document.getElementById("skill-cancel").onclick = () => { document.getElementById("skill-modal").style.display = "none"; };
+document.getElementById("skill-save").onclick = async () => {
+  const st = document.getElementById("skill-modal-status");
+  const name = document.getElementById("skill-name").value.trim().toLowerCase();
+  const content = document.getElementById("skill-content").value;
+  if (!name) { st.textContent = "name required"; return; }
+  if (!content.trim()) { st.textContent = "content required"; return; }
+  st.textContent = "Saving...";
+  const fd = new FormData();
+  fd.append("content", content);
+  try {
+    let r;
+    if (editingSkillName) {
+      r = await fetch("/api/skills/" + encodeURIComponent(editingSkillName), { method: "PUT", body: fd });
+    } else {
+      fd.append("name", name);
+      r = await fetch("/api/skills", { method: "POST", body: fd });
+    }
+    if (!r.ok) { let m = "Save failed"; try { m = (await r.json()).detail || m; } catch (e) {} st.textContent = m; return; }
+    document.getElementById("skill-modal").style.display = "none";
+    loadSkills();
+  } catch (e) { st.textContent = "Save failed"; }
+};
+
+loadSkills();
 
 async function loadMemorySettings() {
   try {

@@ -1992,6 +1992,64 @@ def create_app(config: dict) -> FastAPI:
         a = app.state.app
         return {"skills": a._list_skills()}
 
+    @app.get("/api/skills/{name}")
+    def get_skill(name: str):
+        a = app.state.app
+        name = (name or "").strip().lower()
+        name = re.sub(r"[^a-z0-9_-]", "", name)
+        path = os.path.join(ROOT, "skills", name + ".md")
+        if not os.path.isfile(path):
+            raise HTTPException(404, "skill not found")
+        return {"name": name, "content": a._load_skill(name)}
+
+    @app.post("/api/skills")
+    async def add_skill(name: str = Form(""), content: str = Form("")):
+        a = app.state.app
+        name = (name or "").strip().lower()
+        name = re.sub(r"[^a-z0-9_-]", "", name)
+        if not name:
+            raise HTTPException(400, "invalid skill name")
+        if not content or not content.strip():
+            raise HTTPException(400, "skill content required")
+        path = os.path.join(ROOT, "skills", name + ".md")
+        if os.path.exists(path):
+            raise HTTPException(409, "a skill with this name already exists")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        content = content.replace("\r\n", "\n").replace("\r", "\n").strip()
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(content + "\n")
+        return {"ok": True, "name": name}
+
+    @app.put("/api/skills/{name}")
+    async def edit_skill(name: str, content: str = Form("")):
+        a = app.state.app
+        name = (name or "").strip().lower()
+        name = re.sub(r"[^a-z0-9_-]", "", name)
+        if not name:
+            raise HTTPException(400, "invalid skill name")
+        if not content or not content.strip():
+            raise HTTPException(400, "skill content required")
+        path = os.path.join(ROOT, "skills", name + ".md")
+        if not os.path.isfile(path):
+            raise HTTPException(404, "skill not found")
+        content = content.replace("\r\n", "\n").replace("\r", "\n").strip()
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(content + "\n")
+        return {"ok": True, "name": name}
+
+    @app.delete("/api/skills/{name}")
+    async def delete_skill(name: str):
+        a = app.state.app
+        name = (name or "").strip().lower()
+        name = re.sub(r"[^a-z0-9_-]", "", name)
+        if not name:
+            raise HTTPException(400, "invalid skill name")
+        path = os.path.join(ROOT, "skills", name + ".md")
+        if not os.path.isfile(path):
+            raise HTTPException(404, "skill not found")
+        os.remove(path)
+        return {"ok": True}
+
     @app.get("/api/models")
     def list_models():
         a = app.state.app
