@@ -25,6 +25,7 @@ class BreezeBackend(ModelBackend):
     def __init__(self, config: dict, root: str):
         super().__init__("breeze", config, root)
         self._proc: Optional[subprocess.Popen] = None
+        self._log_file = None
 
     def _available(self) -> bool:
         return True
@@ -38,10 +39,12 @@ class BreezeBackend(ModelBackend):
         port = str(self.config.get("port", 8137))
         env = dict(os.environ)
         env["PYTHONPATH"] = repo_dir
+        log_path = os.path.join(self.root, "output", f"breeze_{int(time.time())}.log")
+        self._log_file = open(log_path, "w")
         self._proc = subprocess.Popen(
             [python, "-m", "breeze_infer.api", model_path, "--host", "127.0.0.1", "--port", port],
             cwd=repo_dir, env=env,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=self._log_file, stderr=subprocess.STDOUT,
         )
         base = f"http://127.0.0.1:{port}"
         for _ in range(180):
@@ -64,6 +67,12 @@ class BreezeBackend(ModelBackend):
             except subprocess.TimeoutExpired:
                 self._proc.kill()
         self._proc = None
+        if self._log_file:
+            try:
+                self._log_file.close()
+            except Exception:
+                pass
+        self._log_file = None
         self._loaded = False
         self._load_error = None
         self._kill_orphans(["breeze_infer.api"])
