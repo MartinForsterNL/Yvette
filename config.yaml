@@ -56,7 +56,7 @@ models:
     model_path: breeze/breeze-tts-2
     port: 8137
     python: breeze/venv/Scripts/python.exe
-    repo_dir: breeze/breeze-tts
+    repo_dir: breeze
   kokoro:
     auto_start: false
     default_voice: bf_isabella
