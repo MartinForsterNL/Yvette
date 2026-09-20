@@ -121,7 +121,7 @@ Everything is configured from the admin UI (http://localhost:8900/admin):
 
 ## License
 
-Source code is licensed under the Apache License 2.0. **Model weights are NOT
+Source code is licensed under the [MIT License](LICENSE). **Model weights are NOT
 included** and are governed by their own licenses:
 
 - **Breeze TTS 2** (`BreezeBlue/breeze-tts-2`): research / non-commercial only
