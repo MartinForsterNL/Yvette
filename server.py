@@ -894,7 +894,7 @@ class TalkApp:
         self._save_history(profile, turns)
 
     def _clear_history(self, profile: str):
-        for turn in self._load_history(session):
+        for turn in self._load_history(profile):
             self._delete_turn_files(turn)
         path = self._history_path(profile)
         try:
@@ -1243,7 +1243,7 @@ class TalkApp:
         now = datetime.datetime.now()
         system = system + "\n\nCurrent date and time: " + now.strftime("%Y-%m-%d %H:%M") + " (" + now.strftime("%A") + ")"
         history = []
-        for turn in self._load_history(profile):
+        for turn in self._load_history(session):
             history.append({"role": "user", "content": turn.get("user_text", "")})
             history.append({"role": "assistant", "content": turn.get("assistant_text", "")})
         cfg = self._model_config(model_name)
