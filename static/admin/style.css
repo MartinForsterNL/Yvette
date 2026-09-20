@@ -134,6 +134,8 @@ button.danger:hover { background: var(--err); color: #fff; }
 
 .pers-modal-content { max-width: 80vw; width: 80vw; max-height: 85vh; display: flex; flex-direction: column; }
 .pers-modal-content textarea { flex: 1; min-height: 45vh; font-size: 14px; line-height: 1.5; }
+.skill-modal-content { max-width: 80vw; width: 80vw; max-height: 85vh; display: flex; flex-direction: column; }
+.skill-modal-content textarea { flex: 1; min-height: 45vh; font-size: 14px; line-height: 1.5; }
 
 /* Status tab */
 .log-output { background: #0d1117; color: #c9d1d9; padding: 14px; border-radius: 8px; font-family: ui-monospace, Consolas, "Courier New", monospace; font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; max-height: 60vh; overflow-y: auto; }
