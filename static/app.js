@@ -382,6 +382,7 @@ async function finish() {
     fd.append("instruction_id", $("instruction").value);
     fd.append("mode", $("mode").value);
     fd.append("personality", $("personality").value);
+    fd.append("profile", (activeProfile && activeProfile !== "custom") ? activeProfile : "default");
     fd.append("skill", selectedSkills.join(","));
     fd.append("model", currentModel);
     fd.append("tts_model", $("tts-model").value);
@@ -610,6 +611,7 @@ async function sendText() {
     fd.append("instruction_id", $("instruction").value);
     fd.append("mode", $("mode").value);
     fd.append("personality", $("personality").value);
+    fd.append("profile", (activeProfile && activeProfile !== "custom") ? activeProfile : "default");
     fd.append("skill", selectedSkills.join(","));
     fd.append("model", currentModel);
     fd.append("tts_model", $("tts-model").value);

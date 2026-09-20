@@ -1416,7 +1416,7 @@ class TalkApp:
         except Exception as e:  # noqa: BLE001
             return f"delete skill error: {e}"
 
-    def _run_tool(self, name: str, args: dict, profile: str = "default") -> str:
+    def _run_tool(self, name: str, args: dict, profile: str = "default", session: str = "default") -> str:
         if name == "web_search":
             return web_search(args.get("query", ""))
         if name == "web_fetch":
@@ -1424,17 +1424,17 @@ class TalkApp:
         if name == "weather":
             return weather(args.get("location", ""))
         if name == "list_files":
-            return self._tool_list_files(profile, args.get("path", ""))
+            return self._tool_list_files(session, args.get("path", ""))
         if name == "read_file":
-            return self._tool_read_file(profile, args.get("path", ""))
+            return self._tool_read_file(session, args.get("path", ""))
         if name == "write_file":
-            return self._tool_write_file(profile, args.get("path", ""), args.get("content", ""))
+            return self._tool_write_file(session, args.get("path", ""), args.get("content", ""))
         if name == "edit_file":
-            return self._tool_edit_file(profile, args.get("path", ""), args.get("old_text", ""), args.get("new_text", ""))
+            return self._tool_edit_file(session, args.get("path", ""), args.get("old_text", ""), args.get("new_text", ""))
         if name == "delete_file":
-            return self._tool_delete_file(profile, args.get("path", ""))
+            return self._tool_delete_file(session, args.get("path", ""))
         if name == "send_file":
-            return self._tool_send_file(profile, args.get("path", ""))
+            return self._tool_send_file(session, args.get("path", ""))
         if name == "use_skill":
             skill_text = self._load_skill(args.get("name", ""))
             return skill_text or "error: skill not found"
@@ -1461,7 +1461,7 @@ class TalkApp:
             return self.memory.delete_item(args.get("slug", ""), args.get("date"), profile)
         return "unknown tool"
 
-    def _resolve_final_answer(self, messages: list, profile: str = "default", model_name: str = "", turn: dict = None):
+    def _resolve_final_answer(self, messages: list, profile: str = "default", model_name: str = "", turn: dict = None, session: str = "default"):
         """Run the tool loop (native function calling, up to 3 rounds).
         Returns (final_answer_text, tool_calls_made)."""
         tools = TOOLS if self.config.get("toolcalling", {}).get("enabled", True) else None
@@ -1486,7 +1486,7 @@ class TalkApp:
                 calls_made.append(entry)
                 if turn is not None:
                     turn["tool_calls"] = list(calls_made)
-                result = self._run_tool(name, args, profile)
+                result = self._run_tool(name, args, profile, session)
                 entry["result"] = result[:300]
                 if turn is not None:
                     turn["tool_calls"] = list(calls_made)
@@ -1565,7 +1565,7 @@ class TalkApp:
             with self._mem_lock:
                 self._curator_busy = False
 
-    def run_turn(self, turn_id: str, profile: str, audio_path, user_text: str = "", voice_id: str = "", instruction_id: str = "", mode: str = "", image_data: str = None, skill: str = "", model_name: str = "", file_content: str = "", file_name: str = "", tts_model: str = "", avatar: str = "", video: str = "1", gen_audio: str = "1", voice: str = "", speed: str = ""):
+    def run_turn(self, turn_id: str, profile: str, audio_path, user_text: str = "", voice_id: str = "", instruction_id: str = "", mode: str = "", image_data: str = None, skill: str = "", model_name: str = "", file_content: str = "", file_name: str = "", tts_model: str = "", avatar: str = "", video: str = "1", gen_audio: str = "1", voice: str = "", speed: str = "", session: str = "default"):
         turn = self.turns.get(turn_id)
         if turn is None:
             return
@@ -1617,7 +1617,7 @@ class TalkApp:
                     "video_url": video_url,
                 })
 
-            final_answer, tool_calls_made = self._resolve_final_answer(messages, profile, model_name, turn)
+            final_answer, tool_calls_made = self._resolve_final_answer(messages, profile, model_name, turn, session)
             turn["tool_calls"] = tool_calls_made
             for tc in tool_calls_made:
                 if tc.get("name") == "set_voice_design":
@@ -1750,6 +1750,7 @@ def create_app(config: dict) -> FastAPI:
         instruction_id: str = Form(""),
         mode: str = Form(""),
         personality: str = Form(""),
+        profile: str = Form(""),
         skill: str = Form(""),
         model: str = Form(""),
         tts_model: str = Form(""),
@@ -1790,7 +1791,7 @@ def create_app(config: dict) -> FastAPI:
             user_image_url = "/api/turn-image/" + turn_id
             # also save a copy to the profile's personal files folder
             try:
-                prof = (personality or "default").strip() or "default"
+                prof = (profile or "default").strip() or "default"
                 files_base = a._files_base(prof)
                 os.makedirs(files_base, exist_ok=True)
                 img_safe_name = os.path.basename(image.filename or "image.png").replace("..", "_")
@@ -1819,7 +1820,7 @@ def create_app(config: dict) -> FastAPI:
                 file_content = None
             # also save a copy to the profile's personal files folder so the model can find it in later turns
             try:
-                prof = (personality or "default").strip() or "default"
+                prof = (profile or "default").strip() or "default"
                 files_base = a._files_base(prof)
                 os.makedirs(files_base, exist_ok=True)
                 with open(os.path.join(files_base, safe_name), "wb") as f:
@@ -1846,8 +1847,9 @@ def create_app(config: dict) -> FastAPI:
         }
         with a.lock:
             a.turns[turn_id] = turn
-        profile = (personality or "default").strip() or "default"
-        threading.Thread(target=a.run_turn, args=(turn_id, profile, audio_path, user_text, voice_id, instruction_id, mode, image_data, skill, model, file_content, file_name, tts_model, avatar, video, gen_audio, voice, speed), daemon=True).start()
+        persona = (personality or "default").strip() or "default"
+        session = (profile or "default").strip() or "default"
+        threading.Thread(target=a.run_turn, args=(turn_id, persona, audio_path, user_text, voice_id, instruction_id, mode, image_data, skill, model, file_content, file_name, tts_model, avatar, video, gen_audio, voice, speed, session), daemon=True).start()
         return {"ok": True, "turn_id": turn_id, "conv_id": conv_id}
 
     @app.get("/api/talk/status/{turn_id}")
