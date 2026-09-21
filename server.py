@@ -2023,13 +2023,13 @@ def create_app(config: dict) -> FastAPI:
             raise HTTPException(404, "no stream")
         ditto_cfg = a.config.get("ditto", {}) or {}
         base = (ditto_cfg.get("base_url") or "").rstrip("/")
-        r = httpx.get(base + f"/api/stream/{sid}/video", timeout=300)
-        if r.status_code != 200:
+        headers = {}
+        if offset > 0:
+            headers["Range"] = f"bytes={offset}-"
+        r = httpx.get(base + f"/api/stream/{sid}/video", headers=headers, timeout=300)
+        if r.status_code not in (200, 206):
             raise HTTPException(404, "video not ready")
-        data = r.content
-        if offset:
-            data = data[offset:] if offset < len(data) else b""
-        return Response(content=data, media_type="video/mp4")
+        return Response(content=r.content, media_type="video/mp4")
 
     @app.get("/api/stream/audio/{turn_id}")
     def stream_audio(turn_id: str):

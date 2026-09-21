@@ -203,7 +203,7 @@ function startStreamVideo(videoUrl, audioUrl, onEnd) {
   streamMS.addEventListener("sourceopen", () => {
     try {
       streamSB = streamMS.addSourceBuffer('video/mp4; codecs="avc1.640020"');
-      streamSB.addEventListener("updateend", () => { if (!streamEnded) scheduleStreamPoll(); });
+      streamSB.addEventListener("updateend", onStreamAppendDone);
       scheduleStreamPoll();
     } catch (e) {
       stopStream();
@@ -212,6 +212,16 @@ function startStreamVideo(videoUrl, audioUrl, onEnd) {
   });
   v.onended = () => { videoPlaying = false; v.style.display = "none"; stopStream(); if (onEnd) onEnd(); };
   v.onerror = () => { videoPlaying = false; v.style.display = "none"; stopStream(); if (onEnd) onEnd(); };
+}
+
+function onStreamAppendDone() {
+  if (!streamStarted && streamSB && streamSB.buffered && streamSB.buffered.length > 0) {
+    streamStarted = true;
+    const v = $("avatar-talk");
+    v.style.display = "";
+    v.play().then(() => { if (streamAudio) streamAudio.play().catch(() => {}); }).catch(() => {});
+  }
+  if (!streamEnded) scheduleStreamPoll();
 }
 
 function scheduleStreamPoll() {
@@ -230,12 +240,6 @@ async function pollStream() {
       if (buf.byteLength > 0) {
         streamSB.appendBuffer(new Uint8Array(buf));
         streamOffset += buf.byteLength;
-        if (!streamStarted) {
-          streamStarted = true;
-          const v = $("avatar-talk");
-          v.style.display = "";
-          v.play().then(() => { if (streamAudio) streamAudio.play().catch(() => {}); }).catch(() => {});
-        }
       }
     }
   } catch (e) {}
