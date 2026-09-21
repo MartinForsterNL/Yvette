@@ -1,6 +1,6 @@
 diff --git a/core/atomic_components/video_audio_writer.py b/core/atomic_components/video_audio_writer.py
 new file mode 100644
-index 0000000..3528f58
+index 0000000..05e7514
 --- /dev/null
 +++ b/core/atomic_components/video_audio_writer.py
 @@ -0,0 +1,59 @@
@@ -19,7 +19,7 @@ index 0000000..3528f58
 +        self.crf = kwargs.get("crf", 18)
 +        self.gop = kwargs.get("gop", 25)
 +        self.movflags = kwargs.get("movflags", "")
-+        self.audio_offset = float(kwargs.get("audio_offset", 0.6))
++        self.audio_offset = float(kwargs.get("audio_offset", 0.8))
 +        self.fps = fps
 +        self.video_path = video_path
 +        self.audio_path = audio_path
