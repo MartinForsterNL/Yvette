@@ -1078,15 +1078,15 @@ class TalkApp:
     def _concat_audio(self, parts, turn_id):
         out = os.path.join(self.turns_dir, turn_id, "stream_audio.wav")
         try:
-            import soundfile as sf
-            data = []
-            sr = 24000
-            for p in parts:
-                d, sr = sf.read(p)
-                data.append(d)
-            if data:
-                merged = np.concatenate(data)
-                sf.write(out, merged, sr)
+            if not parts:
+                return ""
+            listfile = os.path.join(self.turns_dir, turn_id, "concat.txt")
+            with open(listfile, "w") as f:
+                for p in parts:
+                    f.write("file '" + p.replace("'", "'\\''") + "'\n")
+            cmd = f'ffmpeg -loglevel error -y -f concat -safe 0 -i "{listfile}" -c:a pcm_s16le "{out}"'
+            subprocess.run(cmd, shell=True)
+            if os.path.exists(out) and os.path.getsize(out) > 0:
                 return f"/api/turn-file/{turn_id}/stream_audio.wav"
         except Exception as e:
             log_event("error", f"audio concat failed: {type(e).__name__}: {e}")
@@ -1687,7 +1687,8 @@ class TalkApp:
             if mode == "streaming":
                 sts = int((self.config.get("ditto", {}) or {}).get("sampling_timesteps", 50) or 50)
                 hm = float(self._avatar_settings(avatar or "").get("head_motion_alpha", 1.25))
-                sid = self._ditto_stream_start(avatar, hm, sts, 1500)
+                est_frames = max(200, int(len(final_answer) / 8 * 25) + 100)
+                sid = self._ditto_stream_start(avatar, hm, sts, est_frames)
                 audio_parts = []
                 for c in chunk_text(final_answer, self.max_chunk_chars, self.min_chunk_chars):
                     idx = len(turn["sentences"])
