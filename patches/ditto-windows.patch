@@ -1,5 +1,5 @@
 diff --git a/core/atomic_components/writer.py b/core/atomic_components/writer.py
-index 4c075b5..9c861c1 100644
+index 4c075b5..78d7c07 100644
 --- a/core/atomic_components/writer.py
 +++ b/core/atomic_components/writer.py
 @@ -9,7 +9,10 @@ class VideoWriterByImageIO:
@@ -7,7 +7,7 @@ index 4c075b5..9c861c1 100644
          pixelformat = kwargs.get("pixelformat", "yuv420p")  # video pixel format
          macro_block_size = kwargs.get("macro_block_size", 2)
 -        ffmpeg_params = ["-crf", str(kwargs.get("crf", 18))]
-+        output_params = ["-crf", str(kwargs.get("crf", 18))]
++        output_params = ["-crf", str(kwargs.get("crf", 18)), "-g", str(kwargs.get("gop", 25))]
 +        movflags = kwargs.get("movflags")
 +        if movflags:
 +            output_params += ["-movflags", movflags]
@@ -54,10 +54,17 @@ index 9cef03d..d50063c 100644
  
      elif model_path.endswith(".engine") or model_path.endswith(".trt"):
 diff --git a/stream_pipeline_online.py b/stream_pipeline_online.py
-index 0fbfd75..2b4212a 100644
+index 0fbfd75..ea6a45c 100644
 --- a/stream_pipeline_online.py
 +++ b/stream_pipeline_online.py
-@@ -124,6 +124,7 @@ class StreamSDK:
+@@ -1,5 +1,6 @@
+ import threading
+ import queue
++import time
+ import numpy as np
+ import traceback
+ from tqdm import tqdm
+@@ -124,6 +125,7 @@ class StreamSDK:
          self.fix_kp_cond = kwargs.get("fix_kp_cond", 0)
          self.fix_kp_cond_dim = kwargs.get("fix_kp_cond_dim", None)  # [ds,de]
          self.sampling_timesteps = kwargs.get("sampling_timesteps", 50)
@@ -65,7 +72,7 @@ index 0fbfd75..2b4212a 100644
          self.online_mode = kwargs.get("online_mode", False)
          self.v_min_max_for_clip = kwargs.get('v_min_max_for_clip', None)
          self.smo_k_d = kwargs.get("smo_k_d", 3)
-@@ -219,7 +220,7 @@ class StreamSDK:
+@@ -219,7 +221,7 @@ class StreamSDK:
          # ======== Video Writer ========
          self.output_path = output_path
          self.tmp_output_path = output_path + ".tmp.mp4"
@@ -74,3 +81,29 @@ index 0fbfd75..2b4212a 100644
          self.writer_pbar = tqdm(desc="writer")
  
          # ======== Audio Feat Buffer ========
+@@ -254,6 +256,7 @@ class StreamSDK:
+             threading.Thread(target=self.writer_worker),
+         ]
+ 
++        self._t0 = time.time()
+         for thread in self.thread_list:
+             thread.start()
+ 
+@@ -277,6 +280,7 @@ class StreamSDK:
+             self.stop_event.set()
+ 
+     def _writer_worker(self):
++        _first = True
+         while not self.stop_event.is_set():
+             try:
+                 item = self.writer_queue.get(timeout=1)
+@@ -288,6 +292,9 @@ class StreamSDK:
+             res_frame_rgb = item
+             self.writer(res_frame_rgb, fmt="rgb")
+             self.writer_pbar.update()
++            if _first:
++                _first = False
++                print(f"[ditto] first frame at {time.time()-self._t0:.2f}s after setup", flush=True)
+ 
+     def putback_worker(self):
+         try:
