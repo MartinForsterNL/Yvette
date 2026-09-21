@@ -10,6 +10,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 
 from stream_pipeline_online import StreamSDK
+from avatar_cache import AvatarCache
 
 CFG = "checkpoints/ditto_cfg/v0.4_hubert_cfg_trt.pkl"
 DATA_ROOT = os.environ.get("DITTO_DATA_ROOT", "checkpoints/ditto_trt_custom")
@@ -34,6 +35,30 @@ INPUT_DIR = os.path.join(BASE_DIR, "server_input")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(INPUT_DIR, exist_ok=True)
 
+AVATAR_CACHE_DIR = os.path.join(BASE_DIR, "cache", "avatar")
+avatar_cache = AvatarCache(AVATAR_CACHE_DIR)
+
+STALE_TTL_SECONDS = 24 * 3600
+
+def cleanup_stale_files(directory, ttl_seconds):
+    now = time.time()
+    try:
+        for name in os.listdir(directory):
+            p = os.path.join(directory, name)
+            try:
+                if os.path.isfile(p) and (now - os.path.getmtime(p)) > ttl_seconds:
+                    os.remove(p)
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+def stale_cleaner_loop():
+    while True:
+        cleanup_stale_files(OUTPUT_DIR, STALE_TTL_SECONDS)
+        cleanup_stale_files(INPUT_DIR, STALE_TTL_SECONDS)
+        time.sleep(3600)
+
 app = FastAPI()
 sdk = None
 lock = threading.Lock()
@@ -48,6 +73,9 @@ def ensure_sdk():
 @app.on_event("startup")
 def startup():
     ensure_sdk()
+    cleanup_stale_files(OUTPUT_DIR, STALE_TTL_SECONDS)
+    cleanup_stale_files(INPUT_DIR, STALE_TTL_SECONDS)
+    threading.Thread(target=stale_cleaner_loop, daemon=True).start()
 
 @app.post("/api/avatar")
 async def avatar(audio: UploadFile = File(...), avatar: str = Form(""), head_motion_alpha: str = Form(""), sampling_timesteps: str = Form("")):
@@ -102,7 +130,7 @@ CHUNK_POST_PAD = 6480
 streams = {}
 
 @app.post("/api/stream/start")
-async def stream_start(avatar: str = Form(""), head_motion_alpha: str = Form(""), sampling_timesteps: str = Form(""), n_d: str = Form("1500")):
+async def stream_start(avatar: str = Form(""), head_motion_alpha: str = Form(""), sampling_timesteps: str = Form(""), n_d: str = Form("1500"), avatar_id: str = Form("")):
     rid = uuid.uuid4().hex
     out_path = os.path.join(OUTPUT_DIR, rid + ".mp4")
     try:
@@ -117,16 +145,24 @@ async def stream_start(avatar: str = Form(""), head_motion_alpha: str = Form("")
         nd = int(n_d.strip()) if n_d.strip() else 1500
     except (TypeError, ValueError):
         nd = 1500
+    avatar_id = (avatar_id or "").strip()
+    source_path = resolve_avatar(avatar)
+    source_info = None
+    if avatar_id:
+        source_info = avatar_cache.load(avatar_id, source_path)
     t0 = time.time()
     with lock:
         s = ensure_sdk()
         t1 = time.time()
-        s.setup(resolve_avatar(avatar), out_path,
+        s.setup(source_path, out_path,
+                source_info=source_info,
                 online_mode=True,
                 movflags="frag_keyframe+empty_moov+default_base_moof",
                 sampling_timesteps=sts,
                 overall_ctrl_info={"alpha_pitch": hm_alpha, "alpha_yaw": hm_alpha, "alpha_roll": hm_alpha})
         t2 = time.time()
+        if avatar_id and source_info is None:
+            avatar_cache.store(avatar_id, s.source_info, source_path)
         s.setup_Nd(N_d=nd, fade_in=-1, fade_out=-1, ctrl_info={})
         # pre-roll silence so the online warm-up eats silence instead of the reply audio
         pre_roll = np.zeros(CHUNK_PRE_PAD + 51200, dtype=np.float32)
@@ -135,9 +171,9 @@ async def stream_start(avatar: str = Form(""), head_motion_alpha: str = Form("")
             s.run_chunk(pre_roll[pr_pos : pr_pos + CHUNK_WINDOW])
             pr_pos += CHUNK_ADVANCE
         t3 = time.time()
-        print(f"[ditto] sdk={t1-t0:.2f}s setup={t2-t1:.2f}s pre-roll={t3-t2:.2f}s total={t3-t0:.2f}s", flush=True)
+        print(f"[ditto] sdk={t1-t0:.2f}s setup={t2-t1:.2f}s pre-roll={t3-t2:.2f}s total={t3-t0:.2f}s avatar_cache={'hit' if source_info is not None else 'miss'}", flush=True)
         streams[rid] = {"sdk": s, "out_path": out_path, "tmp_path": out_path + ".tmp.mp4", "done": False, "pending": np.zeros(CHUNK_PRE_PAD, dtype=np.float32), "pos": 0}
-    return {"ok": True, "stream_id": rid}
+    return {"ok": True, "stream_id": rid, "avatar_cached": source_info is not None}
 
 
 @app.post("/api/stream/{sid}/audio")

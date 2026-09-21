@@ -122,9 +122,10 @@ if ($SKIP_DITTO_CONVERT) {
 
 # Copy our wrapper server into the ditto dir
 Copy-Item (Join-Path $Servers "ditto_server.py") (Join-Path $ditto "ditto_server.py") -Force
+Copy-Item (Join-Path $Servers "avatar_cache.py") (Join-Path $ditto "avatar_cache.py") -Force
 Copy-Item (Join-Path $Servers "gen_idle_worker.py") (Join-Path $ditto "gen_idle_worker.py") -Force
 Copy-Item (Join-Path $Root "static\avatars\default.jpg") (Join-Path $ditto "avatar.jpg") -Force
-Ok "ditto_server.py + gen_idle_worker.py + default avatar placed"
+Ok "ditto_server.py + avatar_cache.py + gen_idle_worker.py + default avatar placed"
 
 # ---------------------------------------------------------------------------
 Step "Breeze (TTS)"

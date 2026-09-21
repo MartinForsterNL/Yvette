@@ -119,7 +119,7 @@ index 9cef03d..d50063c 100644
  
      elif model_path.endswith(".engine") or model_path.endswith(".trt"):
 diff --git a/stream_pipeline_online.py b/stream_pipeline_online.py
-index 0fbfd75..75b1b98 100644
+index 0fbfd75..e75e401 100644
 --- a/stream_pipeline_online.py
 +++ b/stream_pipeline_online.py
 @@ -1,5 +1,6 @@
@@ -146,7 +146,28 @@ index 0fbfd75..75b1b98 100644
          self.online_mode = kwargs.get("online_mode", False)
          self.v_min_max_for_clip = kwargs.get('v_min_max_for_clip', None)
          self.smo_k_d = kwargs.get("smo_k_d", 3)
-@@ -219,7 +221,7 @@ class StreamSDK:
+@@ -167,12 +169,14 @@ class StreamSDK:
+             "crop_flag_do_rot": self.crop_flag_do_rot,
+         }
+         n_frames = self.template_n_frames if self.template_n_frames > 0 else self.N_d
+-        source_info = self.avatar_registrar(
+-            source_path, 
+-            max_dim=self.max_size, 
+-            n_frames=n_frames, 
+-            **crop_kwargs,
+-        )
++        source_info = kwargs.get("source_info", None)
++        if source_info is None:
++            source_info = self.avatar_registrar(
++                source_path,
++                max_dim=self.max_size,
++                n_frames=n_frames,
++                **crop_kwargs,
++            )
+ 
+         if len(source_info["x_s_info_lst"]) > 1 and self.smo_k_s > 1:
+             source_info["x_s_info_lst"] = smooth_x_s_info_lst(source_info["x_s_info_lst"], smo_k=self.smo_k_s)
+@@ -219,7 +223,7 @@ class StreamSDK:
          # ======== Video Writer ========
          self.output_path = output_path
          self.tmp_output_path = output_path + ".tmp.mp4"
@@ -155,7 +176,7 @@ index 0fbfd75..75b1b98 100644
          self.writer_pbar = tqdm(desc="writer")
  
          # ======== Audio Feat Buffer ========
-@@ -254,6 +256,7 @@ class StreamSDK:
+@@ -254,6 +258,7 @@ class StreamSDK:
              threading.Thread(target=self.writer_worker),
          ]
  
@@ -163,7 +184,7 @@ index 0fbfd75..75b1b98 100644
          for thread in self.thread_list:
              thread.start()
  
-@@ -277,6 +280,7 @@ class StreamSDK:
+@@ -277,6 +282,7 @@ class StreamSDK:
              self.stop_event.set()
  
      def _writer_worker(self):
@@ -171,7 +192,7 @@ index 0fbfd75..75b1b98 100644
          while not self.stop_event.is_set():
              try:
                  item = self.writer_queue.get(timeout=1)
-@@ -288,6 +292,9 @@ class StreamSDK:
+@@ -288,6 +294,9 @@ class StreamSDK:
              res_frame_rgb = item
              self.writer(res_frame_rgb, fmt="rgb")
              self.writer_pbar.update()
@@ -181,7 +202,7 @@ index 0fbfd75..75b1b98 100644
  
      def putback_worker(self):
          try:
-@@ -393,7 +400,7 @@ class StreamSDK:
+@@ -393,7 +402,7 @@ class StreamSDK:
          
          global_idx = 0   # frame idx, for template
          local_idx = 0    # for cur audio_feat
@@ -190,7 +211,7 @@ index 0fbfd75..75b1b98 100644
          while not self.stop_event.is_set():
              try:
                  item = self.audio2motion_queue.get(timeout=1)    # audio feat
-@@ -443,8 +450,8 @@ class StreamSDK:
+@@ -443,8 +452,8 @@ class StreamSDK:
                      x_d_info_list = self.audio2motion.cvt_fmt(valid_res_kp_seq)
  
                      for x_d_info in x_d_info_list:
@@ -201,7 +222,7 @@ index 0fbfd75..75b1b98 100644
  
                          while not self.stop_event.is_set():
                              try:
-@@ -453,7 +460,7 @@ class StreamSDK:
+@@ -453,7 +462,7 @@ class StreamSDK:
                              except queue.Full:
                                  continue
  
