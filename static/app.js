@@ -24,6 +24,7 @@ let mediaSequence = [];  // ordered playback items: {kind: "video"|"audio", url,
 let mediaIndex = -1;     // current playback position, -1 = stopped
 let videoPlaying = false; // whether an avatar video is currently playing
 let streamPlayed = false; // whether the streaming turn's video has been started
+let preheatDone = false;  // DITTO stream preheat fired once this turn
 let player = null;       // single hidden audio element
 let profiles = {};       // profile name -> {personality, voice_id, instruction_id, mode}
 let activeProfile = "";  // currently selected profile name (shown in the page title)
@@ -185,9 +186,9 @@ function startVideo(url, onEnd, onError, onStart) {
 }
 
 // ---- streaming (MSE) player: plays the growing fMP4 as DITTO renders it ----
-let streamMS = null, streamSB = null, streamOffset = 0, streamVideoUrl = "", streamEnded = false, streamTimer = null, streamAudio = null, streamStarted = false;
+let streamMS = null, streamSB = null, streamOffset = 0, streamVideoUrl = "", streamEnded = false, streamTimer = null, streamAudio = null, streamStarted = false, streamBuffer = 0;
 
-function startStreamVideo(videoUrl, audioUrl, onEnd) {
+function startStreamVideo(videoUrl, audioUrl, buffer, onEnd) {
   const v = $("avatar-talk");
   if (!v) return;
   videoPlaying = true;
@@ -196,6 +197,7 @@ function startStreamVideo(videoUrl, audioUrl, onEnd) {
   streamOffset = 0;
   streamEnded = false;
   streamStarted = false;
+  streamBuffer = buffer || 0;
   streamAudio = audioUrl ? new Audio(audioUrl) : null;
   streamMS = new MediaSource();
   v.src = URL.createObjectURL(streamMS);
@@ -216,10 +218,13 @@ function startStreamVideo(videoUrl, audioUrl, onEnd) {
 
 function onStreamAppendDone() {
   if (!streamStarted && streamSB && streamSB.buffered && streamSB.buffered.length > 0) {
-    streamStarted = true;
-    const v = $("avatar-talk");
-    v.style.display = "";
-    v.play().then(() => { if (streamAudio) streamAudio.play().catch(() => {}); }).catch(() => {});
+    const have = streamSB.buffered.end(streamSB.buffered.length - 1);
+    if (have >= streamBuffer) {
+      streamStarted = true;
+      const v = $("avatar-talk");
+      v.style.display = "";
+      v.play().then(() => { if (streamAudio) streamAudio.play().catch(() => {}); }).catch(() => {});
+    }
   }
   if (!streamEnded) scheduleStreamPoll();
 }
@@ -403,7 +408,20 @@ function stopPlayback() {
   if (!turnStreaming) endTurn();
 }
 
+async function preheatStream() {
+  if (preheatDone) return;
+  if ($("mode").value !== "streaming") return;
+  if (!videoOn() || !genAudioOn()) return;
+  preheatDone = true;
+  const fd = new FormData();
+  fd.append("avatar", localStorage.getItem("avatar") || "");
+  try {
+    await fetch("/api/stream/preheat", { method: "POST", body: fd });
+  } catch (e) {}
+}
+
 async function startRecording() {
+  preheatStream();
   try {
     chunks = [];
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -615,7 +633,7 @@ async function pollTurn(turnId, userBubble) {
     if (isStreaming && st.stream && st.stream.video_url && !streamPlayed) {
       streamPlayed = true;
       setTalking(true);
-      startStreamVideo(st.stream.video_url, st.stream.audio_url, () => {
+      startStreamVideo(st.stream.video_url, st.stream.audio_url, st.stream.buffer, () => {
         setTalking(false);
         endTurn();
       });
@@ -626,6 +644,7 @@ async function pollTurn(turnId, userBubble) {
       localStorage.removeItem("talk_active_turn");
       $("status").textContent = "Hold the button to talk";
       turnStreaming = false;
+      preheatDone = false;
       if (isStreaming && streamPlayed) {
         stopStream();
       } else if (mediaIndex === -1) {
@@ -637,6 +656,7 @@ async function pollTurn(turnId, userBubble) {
       localStorage.removeItem("talk_active_turn");
       $("status").textContent = "Error: " + (st.error || "unknown");
       turnStreaming = false;
+      preheatDone = false;
       if (mediaIndex === -1 && !(isStreaming && streamPlayed)) {
         setTalking(false);
         endTurn();
@@ -840,6 +860,7 @@ $("tts-model").addEventListener("change", () => updateVoiceDropdowns($("tts-mode
 
 $("send-text").onclick = sendText;
 $("text-input").addEventListener("keydown", (e) => {
+  preheatStream();
   if (e.key === "Enter") { e.preventDefault(); sendText(); }
 });
 

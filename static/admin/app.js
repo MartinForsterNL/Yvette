@@ -30,7 +30,7 @@ function onTabShow(tab) {
   const loaders = {
     stt: () => loadSTTModels().then(() => { loadSTTSettings(); loadSTTStatus(); }),
     tts: () => { refreshModels(); loadEngineSettings(); loadTtsGeneral(); loadGeneralSettings(); },
-    avatars: () => { loadAvatarDefaults(); loadAvatars(); loadAvatarGeneral(); loadDittoStatus(); },
+    avatars: () => { loadAvatarDefaults(); loadAvatars(); loadAvatarGeneral(); loadDittoStatus(); loadDittoSettings(); },
     personalities: () => { loadPersDefault(); loadPersonalities(); },
     llms: () => { loadLlmDefaults(); loadLlmModels(); },
     general: () => { loadMemorySettings(); loadServerSettings(); loadAuthSettings(); loadToolcalling(); },
@@ -818,7 +818,6 @@ async function loadAvatarDefaults() {
     document.getElementById("avatar-head-alpha").value = d.head_motion_alpha;
     document.getElementById("avatar-idle-alpha").value = d.idle_motion_alpha;
     document.getElementById("avatar-idle-length").value = d.idle_length;
-    document.getElementById("avatar-sampling-steps").value = d.sampling_timesteps;
   } catch (e) {}
 }
 
@@ -827,7 +826,6 @@ document.getElementById("avatar-defaults-save").onclick = async () => {
   fd.append("head_motion_alpha", document.getElementById("avatar-head-alpha").value);
   fd.append("idle_motion_alpha", document.getElementById("avatar-idle-alpha").value);
   fd.append("idle_length", document.getElementById("avatar-idle-length").value);
-  fd.append("sampling_timesteps", document.getElementById("avatar-sampling-steps").value);
   const st = document.getElementById("avatar-defaults-status");
   st.textContent = "Saving...";
   try {
@@ -1969,6 +1967,26 @@ document.getElementById("ditto-unload").onclick = async () => {
     await fetch("/api/ditto/unload", { method: "POST" });
     loadDittoStatus();
   } catch (e) {}
+};
+
+async function loadDittoSettings() {
+  try {
+    const d = await (await fetch("/api/ditto/settings")).json();
+    document.getElementById("ditto-sampling-steps").value = d.sampling_timesteps;
+    document.getElementById("ditto-stream-buffer").value = d.stream_playback_buffer;
+  } catch (e) {}
+}
+
+document.getElementById("ditto-settings-save").onclick = async () => {
+  const fd = new FormData();
+  fd.append("sampling_timesteps", document.getElementById("ditto-sampling-steps").value);
+  fd.append("stream_playback_buffer", document.getElementById("ditto-stream-buffer").value);
+  const st = document.getElementById("ditto-settings-status");
+  st.textContent = "Saving...";
+  try {
+    const r = await fetch("/api/ditto/settings", { method: "POST", body: fd });
+    st.textContent = r.ok ? "Saved" : "Save failed";
+  } catch (e) { st.textContent = "Save failed"; }
 };
 
 loadDittoStatus();

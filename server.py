@@ -729,6 +729,7 @@ class TalkApp:
         self.tts_manager = TTSManager(ROOT, config)
 
         self.turns = {}          # turn_id -> turn dict
+        self._preheated = None   # {"sid", "avatar", "at"} pending stream preheat
         self.lock = threading.Lock()
 
         self.history_dir = os.path.join(ROOT, "history")
@@ -1077,6 +1078,37 @@ class TalkApp:
         except Exception as e:
             log_event("error", f"DITTO stream end failed: {type(e).__name__}: {e}")
         return 0.0
+
+    def _preheat_stream(self, avatar=""):
+        prev = self._preheated
+        if prev and prev.get("sid"):
+            self._ditto_stream_end(prev["sid"])
+        self._preheated = None
+        ditto_cfg = self.config.get("ditto", {}) or {}
+        if not ditto_cfg.get("enabled", False):
+            return ""
+        sts = int(ditto_cfg.get("sampling_timesteps", 40) or 40)
+        hm = float(self._avatar_settings(avatar or "").get("head_motion_alpha", 1.25))
+        sid = self._ditto_stream_start(avatar, hm, sts, 1500) or ""
+        if sid:
+            self._preheated = {"sid": sid, "avatar": (avatar or "").strip(), "at": time.time()}
+        return sid
+
+    def _take_preheated_sid(self, avatar=""):
+        p = self._preheated
+        self._preheated = None
+        if not p or not p.get("sid"):
+            return None
+        if (time.time() - p.get("at", 0)) > 120 or p.get("avatar") != (avatar or "").strip():
+            self._ditto_stream_end(p["sid"])
+            return None
+        return p["sid"]
+
+    def _discard_preheated(self):
+        p = self._preheated
+        self._preheated = None
+        if p and p.get("sid"):
+            self._ditto_stream_end(p["sid"])
 
     def _concat_audio(self, parts, turn_id, video_duration=0.0):
         out = os.path.join(self.turns_dir, turn_id, "stream_audio.wav")
@@ -1694,16 +1726,19 @@ class TalkApp:
             mem_block = self.memory.search_block(user_text, session)
             messages = self._build_messages(profile, user_text, mem_block, image_data, skill, instruction_id, file_content, file_name, model_name, session)
             mode = (mode or self.default_mode or "chunked").lower()
+            if mode != "streaming":
+                self._discard_preheated()
 
             effective_iid = {"value": instruction_id}
 
-            def add_sentence(text):
+            def add_sentence(text, video_override=None):
                 text = clean_text(text)
                 if not text:
                     return
                 idx = len(turn["sentences"])
                 audio_url = None
                 video_url = ""
+                vv = video if video_override is None else video_override
                 try:
                     if gen_audio == "1":
                         audio_url = self.tts_sentence(text, voice_id=voice_id, instruction_id=effective_iid["value"], model=tts_model, voice=voice, speed=speed)
@@ -1711,7 +1746,7 @@ class TalkApp:
                         audio_url = self._copy_tts_audio(audio_url, turn_id, idx)
                         local_name = audio_url.rsplit("/", 1)[-1]
                         local_audio = os.path.join(self.turns_dir, turn_id, local_name)
-                        if os.path.exists(local_audio) and (video == "1"):
+                        if os.path.exists(local_audio) and (vv == "1"):
                             video_url = self.ditto_avatar(local_audio, turn_id, idx, avatar)
                 except Exception as e:  # noqa: BLE001
                     audio_url = None
@@ -1736,39 +1771,46 @@ class TalkApp:
                 final_answer = "Sorry, I couldn't come up with an answer."
 
             if mode == "streaming":
-                sts = int((self.config.get("ditto", {}) or {}).get("sampling_timesteps", 50) or 50)
-                hm = float(self._avatar_settings(avatar or "").get("head_motion_alpha", 1.25))
-                est_frames = max(200, int(len(final_answer) / 8 * 25) + 100)
-                sid = self._ditto_stream_start(avatar, hm, sts, est_frames)
-                audio_parts = []
-                turn["stream"] = {"sid": sid, "video_url": f"/api/stream/video/{turn_id}" if sid else "", "audio_url": f"/api/stream/audio/{turn_id}" if sid else "", "_audio_parts": audio_parts, "_audio_done": False}
-                for c in chunk_text(final_answer, self.max_chunk_chars, self.min_chunk_chars):
-                    idx = len(turn["sentences"])
-                    audio_url = None
-                    try:
-                        if gen_audio == "1":
-                            audio_url = self.tts_sentence(c, voice_id=voice_id, instruction_id=effective_iid["value"], model=tts_model, voice=voice, speed=speed)
-                        if audio_url and sid:
-                            audio_url = self._copy_tts_audio(audio_url, turn_id, idx)
-                            local_audio = os.path.join(self.turns_dir, turn_id, audio_url.rsplit("/", 1)[-1])
-                            self._ditto_stream_audio(sid, local_audio)
-                            audio_parts.append(local_audio)
-                    except Exception as e:  # noqa: BLE001
-                        turn.setdefault("errors", []).append(str(e))
-                    turn["sentences"].append({"index": idx, "text": c, "audio_url": audio_url, "video_url": ""})
-                video_duration = 0.0
+                want_audio = gen_audio == "1"
+                want_video = (video == "1") and want_audio
+                sid = None
+                if want_video:
+                    sid = self._take_preheated_sid(avatar)
+                    if not sid:
+                        sts = int((self.config.get("ditto", {}) or {}).get("sampling_timesteps", 40) or 40)
+                        hm = float(self._avatar_settings(avatar or "").get("head_motion_alpha", 1.25))
+                        est_frames = max(200, int(len(final_answer) / 8 * 25) + 100)
+                        sid = self._ditto_stream_start(avatar, hm, sts, est_frames) or None
                 if sid:
-                    video_duration = self._ditto_stream_end(sid)
-                video_url = f"/api/stream/video/{turn_id}" if sid else ""
-                keep = (self.config.get("ditto", {}) or {}).get("streaming_keep_video", False)
-                if sid and keep:
-                    saved = self._save_stream_video(sid, turn_id)
-                    if saved:
-                        video_url = saved
-                st = turn["stream"]
-                st["video_url"] = video_url
-                st["audio_url"] = self._concat_audio(audio_parts, turn_id, video_duration)
-                st["_audio_done"] = True
+                    buffer_s = float((self.config.get("ditto", {}) or {}).get("stream_playback_buffer", 1.0) or 1.0)
+                    turn["stream"] = {"sid": sid, "video_url": f"/api/stream/video/{turn_id}", "audio_url": "", "buffer": buffer_s, "_audio_done": False}
+                    for c in chunk_text(final_answer, self.max_chunk_chars, self.min_chunk_chars):
+                        idx = len(turn["sentences"])
+                        audio_url = None
+                        try:
+                            if gen_audio == "1":
+                                audio_url = self.tts_sentence(c, voice_id=voice_id, instruction_id=effective_iid["value"], model=tts_model, voice=voice, speed=speed)
+                            if audio_url:
+                                audio_url = self._copy_tts_audio(audio_url, turn_id, idx)
+                                local_audio = os.path.join(self.turns_dir, turn_id, audio_url.rsplit("/", 1)[-1])
+                                self._ditto_stream_audio(sid, local_audio)
+                        except Exception as e:  # noqa: BLE001
+                            turn.setdefault("errors", []).append(str(e))
+                        turn["sentences"].append({"index": idx, "text": c, "audio_url": audio_url, "video_url": ""})
+                    self._ditto_stream_end(sid)
+                    st = turn["stream"]
+                    st["video_url"] = f"/api/stream/video/{turn_id}"
+                    keep = (self.config.get("ditto", {}) or {}).get("streaming_keep_video", False)
+                    if keep:
+                        saved = self._save_stream_video(sid, turn_id)
+                        if saved:
+                            st["video_url"] = saved
+                    st["_audio_done"] = True
+                else:
+                    turn["mode"] = "chunked"
+                    turn["stream"] = None
+                    for c in chunk_text(final_answer, self.max_chunk_chars, self.min_chunk_chars):
+                        add_sentence(c, video_override="0")
             elif mode == "full":
                 add_sentence(final_answer)
             else:
@@ -2013,6 +2055,12 @@ def create_app(config: dict) -> FastAPI:
             "error": turn["error"],
             "stream": ({k: v for k, v in turn.get("stream", {}).items() if not k.startswith("_")} if turn.get("stream") else None),
         }
+
+    @app.post("/api/stream/preheat")
+    async def stream_preheat(avatar: str = Form("")):
+        a = app.state.app
+        sid = a._preheat_stream(avatar)
+        return {"ok": True, "sid": sid}
 
     @app.get("/api/stream/video/{turn_id}")
     def stream_video(turn_id: str, offset: int = 0):
@@ -3281,6 +3329,32 @@ def create_app(config: dict) -> FastAPI:
         a._stop_ditto()
         return {"ok": True, "running": False}
 
+    @app.get("/api/ditto/settings")
+    def ditto_settings():
+        a = app.state.app
+        d = a.config.get("ditto", {}) or {}
+        return {
+            "sampling_timesteps": int(d.get("sampling_timesteps", 40) or 40),
+            "stream_playback_buffer": float(d.get("stream_playback_buffer", 1.0) or 1.0),
+        }
+
+    @app.post("/api/ditto/settings")
+    async def save_ditto_settings(
+        sampling_timesteps: str = Form(""),
+        stream_playback_buffer: str = Form(""),
+    ):
+        a = app.state.app
+        d = a.config.setdefault("ditto", {})
+        try:
+            if sampling_timesteps.strip():
+                d["sampling_timesteps"] = int(sampling_timesteps)
+            if stream_playback_buffer.strip():
+                d["stream_playback_buffer"] = float(stream_playback_buffer)
+        except ValueError:
+            raise HTTPException(400, "invalid numeric value")
+        _save_config(a.config)
+        return {"ok": True}
+
     # ===== avatar defaults + idle regeneration =====
 
     @app.get("/api/avatar/defaults")
@@ -3291,7 +3365,6 @@ def create_app(config: dict) -> FastAPI:
             "head_motion_alpha": float(d.get("head_motion_alpha", 1.25)),
             "idle_motion_alpha": float(d.get("idle_motion_alpha", 1.5)),
             "idle_length": float(d.get("idle_length", 60)),
-            "sampling_timesteps": int(d.get("sampling_timesteps", 50) or 50),
         }
 
     @app.post("/api/avatar/defaults")
@@ -3299,7 +3372,6 @@ def create_app(config: dict) -> FastAPI:
         head_motion_alpha: str = Form(""),
         idle_motion_alpha: str = Form(""),
         idle_length: str = Form(""),
-        sampling_timesteps: str = Form(""),
     ):
         a = app.state.app
         d = a.config.setdefault("ditto", {})
@@ -3310,8 +3382,6 @@ def create_app(config: dict) -> FastAPI:
                 d["idle_motion_alpha"] = float(idle_motion_alpha)
             if idle_length.strip():
                 d["idle_length"] = float(idle_length)
-            if sampling_timesteps.strip():
-                d["sampling_timesteps"] = int(sampling_timesteps)
         except ValueError:
             raise HTTPException(400, "invalid numeric value")
         _save_config(a.config)
