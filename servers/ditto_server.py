@@ -117,13 +117,16 @@ async def stream_start(avatar: str = Form(""), head_motion_alpha: str = Form("")
         nd = int(n_d.strip()) if n_d.strip() else 1500
     except (TypeError, ValueError):
         nd = 1500
+    t0 = time.time()
     with lock:
         s = ensure_sdk()
+        t1 = time.time()
         s.setup(resolve_avatar(avatar), out_path,
                 online_mode=True,
                 movflags="frag_keyframe+empty_moov+default_base_moof",
                 sampling_timesteps=sts,
                 overall_ctrl_info={"alpha_pitch": hm_alpha, "alpha_yaw": hm_alpha, "alpha_roll": hm_alpha})
+        t2 = time.time()
         s.setup_Nd(N_d=nd, fade_in=-1, fade_out=-1, ctrl_info={})
         # pre-roll silence so the online warm-up eats silence instead of the reply audio
         pre_roll = np.zeros(CHUNK_PRE_PAD + 51200, dtype=np.float32)
@@ -131,6 +134,8 @@ async def stream_start(avatar: str = Form(""), head_motion_alpha: str = Form("")
         while pr_pos + CHUNK_WINDOW <= len(pre_roll):
             s.run_chunk(pre_roll[pr_pos : pr_pos + CHUNK_WINDOW])
             pr_pos += CHUNK_ADVANCE
+        t3 = time.time()
+        print(f"[ditto] sdk={t1-t0:.2f}s setup={t2-t1:.2f}s pre-roll={t3-t2:.2f}s total={t3-t0:.2f}s", flush=True)
         streams[rid] = {"sdk": s, "out_path": out_path, "tmp_path": out_path + ".tmp.mp4", "done": False, "pending": np.zeros(CHUNK_PRE_PAD, dtype=np.float32), "pos": 0}
     return {"ok": True, "stream_id": rid}
 
@@ -153,8 +158,14 @@ async def stream_audio(sid: str, audio: UploadFile = File(...)):
             st["sdk"].run_chunk(window)
             st["pos"] += CHUNK_ADVANCE
             n += 1
+        # wait for the worker to drain the fed features so frames is accurate
+        deadline = time.time() + 15
+        while time.time() < deadline and not st["sdk"].audio2motion_queue.empty():
+            time.sleep(0.02)
+        time.sleep(0.15)
         print(f"[stream-audio] fed {n} windows, pending={len(st['pending'])}, pos={st['pos']}", flush=True)
-    return {"ok": True}
+    frames = int(getattr(st["sdk"], "gen_frame_idx", 0) or 0)
+    return {"ok": True, "frames": frames}
 
 
 @app.post("/api/stream/{sid}/end")
@@ -177,7 +188,8 @@ async def stream_end(sid: str):
         duration = float((out.stdout or "").strip() or "0")
     except Exception:
         pass
-    return {"ok": True, "tmp_path": st["tmp_path"], "duration": duration}
+    frames = int(getattr(st["sdk"], "gen_frame_idx", 0) or 0)
+    return {"ok": True, "tmp_path": st["tmp_path"], "duration": duration, "frames": frames}
 
 
 @app.get("/api/stream/{sid}/video")
