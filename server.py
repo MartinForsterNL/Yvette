@@ -1040,6 +1040,58 @@ class TalkApp:
             log_event("error", f"DITTO avatar generation error: {type(e).__name__}: {e}")
             return ""
 
+    def _ditto_stream_start(self, avatar="", hm_alpha=1.25, sts=50, n_d=1500):
+        ditto_cfg = self.config.get("ditto", {}) or {}
+        base = (ditto_cfg.get("base_url") or "").rstrip("/")
+        if not base:
+            return ""
+        try:
+            r = httpx.post(base + "/api/stream/start", data={"avatar": avatar, "head_motion_alpha": str(hm_alpha), "sampling_timesteps": str(sts), "n_d": str(n_d)}, timeout=30)
+            if r.status_code == 200:
+                return r.json().get("stream_id", "")
+        except Exception as e:
+            log_event("error", f"DITTO stream start failed: {type(e).__name__}: {e}")
+        return ""
+
+    def _ditto_stream_audio(self, sid, audio_path):
+        ditto_cfg = self.config.get("ditto", {}) or {}
+        base = (ditto_cfg.get("base_url") or "").rstrip("/")
+        if not base or not sid or not os.path.exists(audio_path):
+            return
+        try:
+            with open(audio_path, "rb") as f:
+                files = {"audio": (os.path.basename(audio_path), f, "audio/ogg")}
+                httpx.post(base + f"/api/stream/{sid}/audio", files=files, timeout=30)
+        except Exception as e:
+            log_event("error", f"DITTO stream audio failed: {type(e).__name__}: {e}")
+
+    def _ditto_stream_end(self, sid):
+        ditto_cfg = self.config.get("ditto", {}) or {}
+        base = (ditto_cfg.get("base_url") or "").rstrip("/")
+        if not base or not sid:
+            return
+        try:
+            httpx.post(base + f"/api/stream/{sid}/end", timeout=300)
+        except Exception as e:
+            log_event("error", f"DITTO stream end failed: {type(e).__name__}: {e}")
+
+    def _concat_audio(self, parts, turn_id):
+        out = os.path.join(self.turns_dir, turn_id, "stream_audio.wav")
+        try:
+            import soundfile as sf
+            data = []
+            sr = 24000
+            for p in parts:
+                d, sr = sf.read(p)
+                data.append(d)
+            if data:
+                merged = np.concatenate(data)
+                sf.write(out, merged, sr)
+                return f"/api/turn-file/{turn_id}/stream_audio.wav"
+        except Exception as e:
+            log_event("error", f"audio concat failed: {type(e).__name__}: {e}")
+        return ""
+
     def _avatars_dir(self):
         return self._ditto_paths()[3]
 
@@ -1632,7 +1684,29 @@ class TalkApp:
             if not final_answer:
                 final_answer = "Sorry, I couldn't come up with an answer."
 
-            if mode == "full":
+            if mode == "streaming":
+                sts = int((self.config.get("ditto", {}) or {}).get("sampling_timesteps", 50) or 50)
+                hm = float(self._avatar_settings(avatar or "").get("head_motion_alpha", 1.25))
+                sid = self._ditto_stream_start(avatar, hm, sts, 1500)
+                audio_parts = []
+                for c in chunk_text(final_answer, self.max_chunk_chars, self.min_chunk_chars):
+                    idx = len(turn["sentences"])
+                    audio_url = None
+                    try:
+                        if gen_audio == "1":
+                            audio_url = self.tts_sentence(c, voice_id=voice_id, instruction_id=effective_iid["value"], model=tts_model, voice=voice, speed=speed)
+                        if audio_url and sid:
+                            audio_url = self._copy_tts_audio(audio_url, turn_id, idx)
+                            local_audio = os.path.join(self.turns_dir, turn_id, audio_url.rsplit("/", 1)[-1])
+                            self._ditto_stream_audio(sid, local_audio)
+                            audio_parts.append(local_audio)
+                    except Exception as e:  # noqa: BLE001
+                        turn.setdefault("errors", []).append(str(e))
+                    turn["sentences"].append({"index": idx, "text": c, "audio_url": audio_url, "video_url": ""})
+                if sid:
+                    self._ditto_stream_end(sid)
+                turn["stream"] = {"sid": sid, "video_url": f"/api/stream/video/{turn_id}" if sid else "", "audio_url": self._concat_audio(audio_parts, turn_id)}
+            elif mode == "full":
                 add_sentence(final_answer)
             else:
                 for c in chunk_text(final_answer, self.max_chunk_chars, self.min_chunk_chars):
@@ -1872,7 +1946,22 @@ def create_app(config: dict) -> FastAPI:
             "sentences": list(turn["sentences"]),
             "tool_calls": list(turn.get("tool_calls", [])),
             "error": turn["error"],
+            "stream": turn.get("stream"),
         }
+
+    @app.get("/api/stream/video/{turn_id}")
+    def stream_video(turn_id: str):
+        a = app.state.app
+        turn = a.turns.get(turn_id)
+        sid = ((turn or {}).get("stream") or {}).get("sid", "")
+        if not sid:
+            raise HTTPException(404, "no stream")
+        ditto_cfg = a.config.get("ditto", {}) or {}
+        base = (ditto_cfg.get("base_url") or "").rstrip("/")
+        r = httpx.get(base + f"/api/stream/{sid}/video", timeout=300)
+        if r.status_code != 200:
+            raise HTTPException(404, "video not ready")
+        return Response(content=r.content, media_type="video/mp4")
 
     @app.post("/api/tts")
     async def tts_full(

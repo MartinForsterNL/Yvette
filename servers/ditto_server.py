@@ -6,10 +6,10 @@ os.chdir(BASE_DIR)
 
 import numpy as np
 import librosa
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import FileResponse, JSONResponse
 
-from stream_pipeline_offline import StreamSDK
+from stream_pipeline_online import StreamSDK
 
 CFG = "checkpoints/ditto_cfg/v0.4_hubert_cfg_trt.pkl"
 DATA_ROOT = os.environ.get("DITTO_DATA_ROOT", "checkpoints/ditto_trt_custom")
@@ -91,6 +91,91 @@ async def avatar(audio: UploadFile = File(...), avatar: str = Form(""), head_mot
 
     return FileResponse(out_path, media_type="video/mp4", filename="avatar.mp4",
                         headers={"X-Gen-Seconds": f"{dt:.1f}"})
+
+
+
+CHUNK_WINDOW = 6480  # 0.4s + 80 pad (samples @16k)
+CHUNK_ADVANCE = 3200  # 5 frames * 0.04s * 16000
+CHUNK_PRE_PAD = 2000
+CHUNK_POST_PAD = 6480
+
+streams = {}
+
+@app.post("/api/stream/start")
+async def stream_start(avatar: str = Form(""), head_motion_alpha: str = Form(""), sampling_timesteps: str = Form(""), n_d: str = Form("1500")):
+    rid = uuid.uuid4().hex
+    out_path = os.path.join(OUTPUT_DIR, rid + ".mp4")
+    try:
+        hm_alpha = float(head_motion_alpha) if head_motion_alpha.strip() else HEAD_MOTION_ALPHA
+    except (TypeError, ValueError):
+        hm_alpha = HEAD_MOTION_ALPHA
+    try:
+        sts = int(sampling_timesteps.strip()) if sampling_timesteps.strip() else 50
+    except (TypeError, ValueError):
+        sts = 50
+    try:
+        nd = int(n_d.strip()) if n_d.strip() else 1500
+    except (TypeError, ValueError):
+        nd = 1500
+    with lock:
+        s = ensure_sdk()
+        s.setup(resolve_avatar(avatar), out_path,
+                online_mode=True,
+                movflags="frag_keyframe+empty_moov+default_base_moof",
+                sampling_timesteps=sts,
+                overall_ctrl_info={"alpha_pitch": hm_alpha, "alpha_yaw": hm_alpha, "alpha_roll": hm_alpha})
+        s.setup_Nd(N_d=nd, fade_in=-1, fade_out=-1, ctrl_info={})
+        # pre-roll silence so the online warm-up eats silence instead of the reply audio
+        pre_roll = np.zeros(CHUNK_PRE_PAD + 51200, dtype=np.float32)
+        pr_pos = 0
+        while pr_pos + CHUNK_WINDOW <= len(pre_roll):
+            s.run_chunk(pre_roll[pr_pos : pr_pos + CHUNK_WINDOW])
+            pr_pos += CHUNK_ADVANCE
+        streams[rid] = {"sdk": s, "out_path": out_path, "tmp_path": out_path + ".tmp.mp4", "done": False, "pending": np.zeros(CHUNK_PRE_PAD, dtype=np.float32), "pos": 0}
+    return {"ok": True, "stream_id": rid}
+
+
+@app.post("/api/stream/{sid}/audio")
+async def stream_audio(sid: str, audio: UploadFile = File(...)):
+    st = streams.get(sid)
+    if not st:
+        raise HTTPException(404, "unknown stream")
+    tmp = os.path.join(INPUT_DIR, sid + "_chunk.wav")
+    with open(tmp, "wb") as f:
+        f.write(await audio.read())
+    audio_data, sr = librosa.load(tmp, sr=16000)
+    audio_data = audio_data.astype(np.float32)
+    with lock:
+        st["pending"] = np.concatenate([st["pending"], audio_data])
+        while st["pos"] + CHUNK_WINDOW <= len(st["pending"]):
+            window = st["pending"][st["pos"] : st["pos"] + CHUNK_WINDOW]
+            st["sdk"].run_chunk(window)
+            st["pos"] += CHUNK_ADVANCE
+    return {"ok": True}
+
+
+@app.post("/api/stream/{sid}/end")
+async def stream_end(sid: str):
+    st = streams.get(sid)
+    if not st:
+        raise HTTPException(404, "unknown stream")
+    with lock:
+        st["pending"] = np.concatenate([st["pending"], np.zeros(CHUNK_POST_PAD, dtype=np.float32)])
+        while st["pos"] + CHUNK_WINDOW <= len(st["pending"]):
+            window = st["pending"][st["pos"] : st["pos"] + CHUNK_WINDOW]
+            st["sdk"].run_chunk(window)
+            st["pos"] += CHUNK_ADVANCE
+        st["sdk"].close()
+    st["done"] = True
+    return {"ok": True, "tmp_path": st["tmp_path"]}
+
+
+@app.get("/api/stream/{sid}/video")
+async def stream_video(sid: str):
+    st = streams.get(sid)
+    if not st or not os.path.exists(st["tmp_path"]):
+        return JSONResponse({"ok": False}, status_code=404)
+    return FileResponse(st["tmp_path"], media_type="video/mp4")
 
 @app.get("/api/health")
 def health():

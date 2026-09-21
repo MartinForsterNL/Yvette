@@ -23,6 +23,7 @@ let chunks = [];
 let mediaSequence = [];  // ordered playback items: {kind: "video"|"audio", url, bubble}
 let mediaIndex = -1;     // current playback position, -1 = stopped
 let videoPlaying = false; // whether an avatar video is currently playing
+let streamPlayed = false; // whether the streaming turn's video has been started
 let player = null;       // single hidden audio element
 let profiles = {};       // profile name -> {personality, voice_id, instruction_id, mode}
 let activeProfile = "";  // currently selected profile name (shown in the page title)
@@ -523,9 +524,28 @@ async function pollTurn(turnId, userBubble) {
 
     const sentences = st.sentences || [];
     for (let i = seen; i < sentences.length; i++) {
-      addAssistantSentence(sentences[i]);
+      if (st.stream) {
+        const b = document.createElement("div");
+        b.className = "bubble assistant";
+        const sp = document.createElement("span");
+        sp.innerHTML = linkify(sentences[i].text);
+        b.appendChild(sp);
+        $("conversation").appendChild(b);
+      } else {
+        addAssistantSentence(sentences[i]);
+      }
     }
     seen = sentences.length;
+
+    if (st.stream && st.stream.video_url && !streamPlayed) {
+      streamPlayed = true;
+      startVideo(st.stream.video_url, () => {}, () => {});
+      if (st.stream.audio_url) {
+        const au = new Audio(st.stream.audio_url);
+        au.play().catch(() => {});
+      }
+      scrollToBottom();
+    }
 
     if (st.status === "done") {
       localStorage.removeItem("talk_active_turn");
