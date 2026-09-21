@@ -158,11 +158,6 @@ async def stream_audio(sid: str, audio: UploadFile = File(...)):
             st["sdk"].run_chunk(window)
             st["pos"] += CHUNK_ADVANCE
             n += 1
-        # wait for the worker to drain the fed features so frames is accurate
-        deadline = time.time() + 15
-        while time.time() < deadline and not st["sdk"].audio2motion_queue.empty():
-            time.sleep(0.02)
-        time.sleep(0.15)
         print(f"[stream-audio] fed {n} windows, pending={len(st['pending'])}, pos={st['pos']}", flush=True)
     frames = int(getattr(st["sdk"], "gen_frame_idx", 0) or 0)
     return {"ok": True, "frames": frames}
@@ -189,7 +184,8 @@ async def stream_end(sid: str):
     except Exception:
         pass
     frames = int(getattr(st["sdk"], "gen_frame_idx", 0) or 0)
-    return {"ok": True, "tmp_path": st["tmp_path"], "duration": duration, "frames": frames}
+    offset = (frames * 640 - int(st["pos"])) / 16000.0
+    return {"ok": True, "tmp_path": st["tmp_path"], "duration": duration, "frames": frames, "offset": max(0.0, offset)}
 
 
 @app.get("/api/stream/{sid}/video")
