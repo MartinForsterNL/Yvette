@@ -28,3 +28,39 @@ index 9cef03d..d50063c 100644
          return model, "onnx"
  
      elif model_path.endswith(".engine") or model_path.endswith(".trt"):
+
+diff --git a/core/atomic_components/writer.py b/core/atomic_components/writer.py
+index 4c075b5..4c43f2d 100644
+--- a/core/atomic_components/writer.py
++++ b/core/atomic_components/writer.py
+@@ -10,6 +10,9 @@ class VideoWriterByImageIO:
+         pixelformat = kwargs.get("pixelformat", "yuv420p")  # video pixel format
+         macro_block_size = kwargs.get("macro_block_size", 2)
+         ffmpeg_params = ["-crf", str(kwargs.get("crf", 18))]
++        movflags = kwargs.get("movflags")
++        if movflags:
++            ffmpeg_params += ["-movflags", movflags]
+ 
+         os.makedirs(os.path.dirname(video_path), exist_ok=True)
+         
+diff --git a/stream_pipeline_online.py b/stream_pipeline_online.py
+index 0fbfd75..2b4212a 100644
+--- a/stream_pipeline_online.py
++++ b/stream_pipeline_online.py
+@@ -124,6 +124,7 @@ class StreamSDK:
+         self.fix_kp_cond = kwargs.get("fix_kp_cond", 0)
+         self.fix_kp_cond_dim = kwargs.get("fix_kp_cond_dim", None)  # [ds,de]
+         self.sampling_timesteps = kwargs.get("sampling_timesteps", 50)
++        self.movflags = kwargs.get("movflags")
+         self.online_mode = kwargs.get("online_mode", False)
+         self.v_min_max_for_clip = kwargs.get('v_min_max_for_clip', None)
+         self.smo_k_d = kwargs.get("smo_k_d", 3)
+@@ -219,7 +220,7 @@ class StreamSDK:
+         # ======== Video Writer ========
+         self.output_path = output_path
+         self.tmp_output_path = output_path + ".tmp.mp4"
+-        self.writer = VideoWriterByImageIO(self.tmp_output_path)
++        self.writer = VideoWriterByImageIO(self.tmp_output_path, movflags=self.movflags)
+         self.writer_pbar = tqdm(desc="writer")
+ 
+         # ======== Audio Feat Buffer ========
