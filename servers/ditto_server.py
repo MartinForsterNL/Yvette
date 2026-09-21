@@ -147,10 +147,13 @@ async def stream_audio(sid: str, audio: UploadFile = File(...)):
     audio_data = audio_data.astype(np.float32)
     with lock:
         st["pending"] = np.concatenate([st["pending"], audio_data])
+        n = 0
         while st["pos"] + CHUNK_WINDOW <= len(st["pending"]):
             window = st["pending"][st["pos"] : st["pos"] + CHUNK_WINDOW]
             st["sdk"].run_chunk(window)
             st["pos"] += CHUNK_ADVANCE
+            n += 1
+        print(f"[stream-audio] fed {n} windows, pending={len(st['pending'])}, pos={st['pos']}", flush=True)
     return {"ok": True}
 
 

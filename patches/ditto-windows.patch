@@ -1,3 +1,17 @@
+diff --git a/core/atomic_components/writer.py b/core/atomic_components/writer.py
+index 4c075b5..4c43f2d 100644
+--- a/core/atomic_components/writer.py
++++ b/core/atomic_components/writer.py
+@@ -10,6 +10,9 @@ class VideoWriterByImageIO:
+         pixelformat = kwargs.get("pixelformat", "yuv420p")  # video pixel format
+         macro_block_size = kwargs.get("macro_block_size", 2)
+         ffmpeg_params = ["-crf", str(kwargs.get("crf", 18))]
++        movflags = kwargs.get("movflags")
++        if movflags:
++            ffmpeg_params += ["-movflags", movflags]
+ 
+         os.makedirs(os.path.dirname(video_path), exist_ok=True)
+         
 diff --git a/core/aux_models/mediapipe_landmark478.py b/core/aux_models/mediapipe_landmark478.py
 index 305545b..4d1385e 100644
 --- a/core/aux_models/mediapipe_landmark478.py
@@ -28,21 +42,6 @@ index 9cef03d..d50063c 100644
          return model, "onnx"
  
      elif model_path.endswith(".engine") or model_path.endswith(".trt"):
-
-diff --git a/core/atomic_components/writer.py b/core/atomic_components/writer.py
-index 4c075b5..4c43f2d 100644
---- a/core/atomic_components/writer.py
-+++ b/core/atomic_components/writer.py
-@@ -10,6 +10,9 @@ class VideoWriterByImageIO:
-         pixelformat = kwargs.get("pixelformat", "yuv420p")  # video pixel format
-         macro_block_size = kwargs.get("macro_block_size", 2)
-         ffmpeg_params = ["-crf", str(kwargs.get("crf", 18))]
-+        movflags = kwargs.get("movflags")
-+        if movflags:
-+            ffmpeg_params += ["-movflags", movflags]
- 
-         os.makedirs(os.path.dirname(video_path), exist_ok=True)
-         
 diff --git a/stream_pipeline_online.py b/stream_pipeline_online.py
 index 0fbfd75..2b4212a 100644
 --- a/stream_pipeline_online.py

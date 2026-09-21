@@ -154,7 +154,7 @@ function openImageModal(url) {
   $("image-modal").style.display = "flex";
 }
 
-function startVideo(url, onEnd, onError) {
+function startVideo(url, onEnd, onError, onStart) {
   const v = $("avatar-talk");
   if (!v) return;
   videoPlaying = true;
@@ -165,7 +165,7 @@ function startVideo(url, onEnd, onError) {
     if (ready) return;
     ready = true;
     v.style.display = "";
-    v.play().catch(() => { if (onError) onError(); });
+    v.play().then(() => { if (onStart) onStart(); }).catch(() => { if (onError) onError(); });
   };
   v.oncanplay = begin;
   v.onloadeddata = begin; // fallback: first frame is available
@@ -550,11 +550,12 @@ async function pollTurn(turnId, userBubble) {
       }, () => {
         setTalking(false);
         endTurn();
+      }, () => {
+        if (st.stream.audio_url) {
+          const au = new Audio(st.stream.audio_url);
+          au.play().catch(() => {});
+        }
       });
-      if (st.stream.audio_url) {
-        const au = new Audio(st.stream.audio_url);
-        au.play().catch(() => {});
-      }
       scrollToBottom();
     }
 
