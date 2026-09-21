@@ -1,6 +1,6 @@
 diff --git a/core/atomic_components/video_audio_writer.py b/core/atomic_components/video_audio_writer.py
 new file mode 100644
-index 0000000..05e7514
+index 0000000..65b52d8
 --- /dev/null
 +++ b/core/atomic_components/video_audio_writer.py
 @@ -0,0 +1,59 @@
@@ -31,7 +31,7 @@ index 0000000..05e7514
 +        cmd = [
 +            imageio_ffmpeg.get_ffmpeg_exe(), "-y",
 +            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}", "-r", str(self.fps), "-i", "-",
-+            "-itsoffset", str(self.audio_offset), "-f", "f32le", "-ar", "16000", "-ac", "1", "-re", "-i", self.audio_path,
++            "-itsoffset", str(self.audio_offset), "-f", "f32le", "-ar", "16000", "-ac", "1", "-i", self.audio_path,
 +            "-map", "0:v", "-map", "1:a",
 +            "-c:v", self.codec, "-pix_fmt", "yuv420p", "-crf", str(self.crf), "-g", str(self.gop),
 +            "-c:a", "aac", "-b:a", "128k",
