@@ -57,6 +57,7 @@ function setChatHidden(hidden) {
 function beginTurn() {
   busy = true;
   turnStreaming = true;
+  streamPlayed = false;
   applyChatVisibility();
 }
 

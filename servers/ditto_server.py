@@ -167,7 +167,14 @@ async def stream_end(sid: str):
             st["pos"] += CHUNK_ADVANCE
         st["sdk"].close()
     st["done"] = True
-    return {"ok": True, "tmp_path": st["tmp_path"]}
+    duration = 0.0
+    try:
+        probe = 'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{}"'.format(st["tmp_path"])
+        out = subprocess.run(probe, shell=True, capture_output=True, text=True)
+        duration = float((out.stdout or "").strip() or "0")
+    except Exception:
+        pass
+    return {"ok": True, "tmp_path": st["tmp_path"], "duration": duration}
 
 
 @app.get("/api/stream/{sid}/video")

@@ -1069,13 +1069,16 @@ class TalkApp:
         ditto_cfg = self.config.get("ditto", {}) or {}
         base = (ditto_cfg.get("base_url") or "").rstrip("/")
         if not base or not sid:
-            return
+            return 0.0
         try:
-            httpx.post(base + f"/api/stream/{sid}/end", timeout=300)
+            r = httpx.post(base + f"/api/stream/{sid}/end", timeout=300)
+            if r.status_code == 200:
+                return float((r.json() or {}).get("duration") or 0.0)
         except Exception as e:
             log_event("error", f"DITTO stream end failed: {type(e).__name__}: {e}")
+        return 0.0
 
-    def _concat_audio(self, parts, turn_id):
+    def _concat_audio(self, parts, turn_id, video_duration=0.0):
         out = os.path.join(self.turns_dir, turn_id, "stream_audio.wav")
         try:
             if not parts:
@@ -1084,10 +1087,38 @@ class TalkApp:
             with open(listfile, "w") as f:
                 for p in parts:
                     f.write("file '" + p.replace("'", "'\\''") + "'\n")
-            cmd = f'ffmpeg -loglevel error -y -f concat -safe 0 -i "{listfile}" -c:a pcm_s16le "{out}"'
+            raw = out + ".raw.wav"
+            cmd = f'ffmpeg -loglevel error -y -f concat -safe 0 -i "{listfile}" -c:a pcm_s16le "{raw}"'
             subprocess.run(cmd, shell=True)
+            if not (os.path.exists(raw) and os.path.getsize(raw) > 0):
+                return ""
+            # Align with the video: the video has a leading idle pre-roll (warm-up)
+            # plus a trailing post-pad the plain audio lacks. Prepend the leading
+            # gap so voice + lips start together.
+            offset = 0.0
+            if video_duration > 0:
+                try:
+                    dur = subprocess.run(
+                        f'ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "{raw}"',
+                        shell=True, capture_output=True, text=True).stdout.strip()
+                    audio_duration = float(dur or "0")
+                    offset = video_duration - audio_duration - 0.405  # CHUNK_POST_PAD / 16000
+                    if offset < 0.05:
+                        offset = 0.0
+                except Exception:
+                    offset = 0.0
+            if offset > 0:
+                cmd2 = f'ffmpeg -loglevel error -y -i "{raw}" -af "adelay={int(offset * 1000)}:all=1" -c:a pcm_s16le "{out}"'
+                subprocess.run(cmd2, shell=True)
+                try:
+                    os.remove(raw)
+                except OSError:
+                    pass
+            else:
+                os.rename(raw, out)
             if os.path.exists(out) and os.path.getsize(out) > 0:
                 return f"/api/turn-file/{turn_id}/stream_audio.wav"
+            return ""
         except Exception as e:
             log_event("error", f"audio concat failed: {type(e).__name__}: {e}")
         return ""
@@ -1724,15 +1755,16 @@ class TalkApp:
                     except Exception as e:  # noqa: BLE001
                         turn.setdefault("errors", []).append(str(e))
                     turn["sentences"].append({"index": idx, "text": c, "audio_url": audio_url, "video_url": ""})
+                video_duration = 0.0
                 if sid:
-                    self._ditto_stream_end(sid)
+                    video_duration = self._ditto_stream_end(sid)
                 video_url = f"/api/stream/video/{turn_id}" if sid else ""
                 keep = (self.config.get("ditto", {}) or {}).get("streaming_keep_video", False)
                 if sid and keep:
                     saved = self._save_stream_video(sid, turn_id)
                     if saved:
                         video_url = saved
-                turn["stream"] = {"sid": sid, "video_url": video_url, "audio_url": self._concat_audio(audio_parts, turn_id)}
+                turn["stream"] = {"sid": sid, "video_url": video_url, "audio_url": self._concat_audio(audio_parts, turn_id, video_duration)}
             elif mode == "full":
                 add_sentence(final_answer)
             else:
