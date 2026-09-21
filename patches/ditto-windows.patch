@@ -1,17 +1,28 @@
 diff --git a/core/atomic_components/writer.py b/core/atomic_components/writer.py
-index 4c075b5..4c43f2d 100644
+index 4c075b5..9c861c1 100644
 --- a/core/atomic_components/writer.py
 +++ b/core/atomic_components/writer.py
-@@ -10,6 +10,9 @@ class VideoWriterByImageIO:
+@@ -9,7 +9,10 @@ class VideoWriterByImageIO:
+         quality = kwargs.get("quality")  # video quality
          pixelformat = kwargs.get("pixelformat", "yuv420p")  # video pixel format
          macro_block_size = kwargs.get("macro_block_size", 2)
-         ffmpeg_params = ["-crf", str(kwargs.get("crf", 18))]
+-        ffmpeg_params = ["-crf", str(kwargs.get("crf", 18))]
++        output_params = ["-crf", str(kwargs.get("crf", 18))]
 +        movflags = kwargs.get("movflags")
 +        if movflags:
-+            ffmpeg_params += ["-movflags", movflags]
++            output_params += ["-movflags", movflags]
  
          os.makedirs(os.path.dirname(video_path), exist_ok=True)
          
+@@ -19,7 +22,7 @@ class VideoWriterByImageIO:
+             format=video_format,
+             codec=codec,
+             quality=quality,
+-            ffmpeg_params=ffmpeg_params,
++            output_params=output_params,
+             pixelformat=pixelformat,
+             macro_block_size=macro_block_size,
+         )
 diff --git a/core/aux_models/mediapipe_landmark478.py b/core/aux_models/mediapipe_landmark478.py
 index 305545b..4d1385e 100644
 --- a/core/aux_models/mediapipe_landmark478.py
