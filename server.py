@@ -1022,10 +1022,11 @@ class TalkApp:
             return ""
         settings = self._avatar_settings(avatar or "")
         hm_alpha = settings.get("head_motion_alpha", 1.25)
+        sts = int(ditto_cfg.get("sampling_timesteps", 50) or 50)
         try:
             with open(audio_path, "rb") as f:
                 files = {"audio": (os.path.basename(audio_path), f, "audio/ogg")}
-                r = httpx.post(base + "/api/avatar", files=files, data={"avatar": avatar, "head_motion_alpha": str(hm_alpha)}, timeout=300)
+                r = httpx.post(base + "/api/avatar", files=files, data={"avatar": avatar, "head_motion_alpha": str(hm_alpha), "sampling_timesteps": str(sts)}, timeout=300)
             if r.status_code != 200:
                 log_event("error", f"DITTO avatar generation failed (HTTP {r.status_code})")
                 return ""
@@ -3101,6 +3102,7 @@ def create_app(config: dict) -> FastAPI:
             "head_motion_alpha": float(d.get("head_motion_alpha", 1.25)),
             "idle_motion_alpha": float(d.get("idle_motion_alpha", 1.5)),
             "idle_length": float(d.get("idle_length", 60)),
+            "sampling_timesteps": int(d.get("sampling_timesteps", 50) or 50),
         }
 
     @app.post("/api/avatar/defaults")
@@ -3108,6 +3110,7 @@ def create_app(config: dict) -> FastAPI:
         head_motion_alpha: str = Form(""),
         idle_motion_alpha: str = Form(""),
         idle_length: str = Form(""),
+        sampling_timesteps: str = Form(""),
     ):
         a = app.state.app
         d = a.config.setdefault("ditto", {})
@@ -3118,6 +3121,8 @@ def create_app(config: dict) -> FastAPI:
                 d["idle_motion_alpha"] = float(idle_motion_alpha)
             if idle_length.strip():
                 d["idle_length"] = float(idle_length)
+            if sampling_timesteps.strip():
+                d["sampling_timesteps"] = int(sampling_timesteps)
         except ValueError:
             raise HTTPException(400, "invalid numeric value")
         _save_config(a.config)

@@ -50,7 +50,7 @@ def startup():
     ensure_sdk()
 
 @app.post("/api/avatar")
-async def avatar(audio: UploadFile = File(...), avatar: str = Form(""), head_motion_alpha: str = Form("")):
+async def avatar(audio: UploadFile = File(...), avatar: str = Form(""), head_motion_alpha: str = Form(""), sampling_timesteps: str = Form("")):
     rid = uuid.uuid4().hex
     audio_path = os.path.join(INPUT_DIR, rid + ".wav")
     out_path = os.path.join(OUTPUT_DIR, rid + ".mp4")
@@ -66,7 +66,14 @@ async def avatar(audio: UploadFile = File(...), avatar: str = Form(""), head_mot
     def generate():
         s = ensure_sdk()
         t0 = time.time()
-        s.setup(resolve_avatar(avatar), out_path, overall_ctrl_info={"alpha_pitch": hm_alpha, "alpha_yaw": hm_alpha, "alpha_roll": hm_alpha})
+        setup_kwargs = {"overall_ctrl_info": {"alpha_pitch": hm_alpha, "alpha_yaw": hm_alpha, "alpha_roll": hm_alpha}}
+        try:
+            _sts = int((sampling_timesteps or "").strip())
+            if _sts > 0:
+                setup_kwargs["sampling_timesteps"] = _sts
+        except (TypeError, ValueError):
+            pass
+        s.setup(resolve_avatar(avatar), out_path, **setup_kwargs)
         audio_data, sr = librosa.load(audio_path, sr=16000)
         num_f = int(np.ceil(len(audio_data) / 16000 * 25))
         s.setup_Nd(N_d=num_f, fade_in=-1, fade_out=-1, ctrl_info={})

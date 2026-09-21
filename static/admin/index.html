@@ -331,6 +331,10 @@
             <label>Idle length (seconds)</label>
             <input type="number" id="avatar-idle-length" min="5" max="120">
           </div>
+          <div class="field">
+            <label>Sampling timesteps <span class="hint">lower = faster but lower quality. 50 = default</span></label>
+            <input type="number" id="avatar-sampling-steps" min="10" max="50" step="1">
+          </div>
           <div class="row actions">
             <button id="avatar-defaults-save" class="primary">Save</button>
             <span id="avatar-defaults-status" class="status"></span>
@@ -1050,6 +1054,6 @@
   </div>
 </div>
 
-<script src="/static/admin/app.js?v=54"></script>
+<script src="/static/admin/app.js?v=55"></script>
 </body>
 </html>

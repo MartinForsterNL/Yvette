@@ -818,6 +818,7 @@ async function loadAvatarDefaults() {
     document.getElementById("avatar-head-alpha").value = d.head_motion_alpha;
     document.getElementById("avatar-idle-alpha").value = d.idle_motion_alpha;
     document.getElementById("avatar-idle-length").value = d.idle_length;
+    document.getElementById("avatar-sampling-steps").value = d.sampling_timesteps;
   } catch (e) {}
 }
 
@@ -826,6 +827,7 @@ document.getElementById("avatar-defaults-save").onclick = async () => {
   fd.append("head_motion_alpha", document.getElementById("avatar-head-alpha").value);
   fd.append("idle_motion_alpha", document.getElementById("avatar-idle-alpha").value);
   fd.append("idle_length", document.getElementById("avatar-idle-length").value);
+  fd.append("sampling_timesteps", document.getElementById("avatar-sampling-steps").value);
   const st = document.getElementById("avatar-defaults-status");
   st.textContent = "Saving...";
   try {
