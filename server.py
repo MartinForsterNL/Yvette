@@ -35,7 +35,7 @@ from urllib.parse import quote
 import httpx
 import yaml
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import sys
@@ -1741,6 +1741,7 @@ class TalkApp:
                 est_frames = max(200, int(len(final_answer) / 8 * 25) + 100)
                 sid = self._ditto_stream_start(avatar, hm, sts, est_frames)
                 audio_parts = []
+                turn["stream"] = {"sid": sid, "video_url": f"/api/stream/video/{turn_id}" if sid else "", "audio_url": f"/api/stream/audio/{turn_id}" if sid else "", "_audio_parts": audio_parts, "_audio_done": False}
                 for c in chunk_text(final_answer, self.max_chunk_chars, self.min_chunk_chars):
                     idx = len(turn["sentences"])
                     audio_url = None
@@ -1764,7 +1765,10 @@ class TalkApp:
                     saved = self._save_stream_video(sid, turn_id)
                     if saved:
                         video_url = saved
-                turn["stream"] = {"sid": sid, "video_url": video_url, "audio_url": self._concat_audio(audio_parts, turn_id, video_duration)}
+                st = turn["stream"]
+                st["video_url"] = video_url
+                st["audio_url"] = self._concat_audio(audio_parts, turn_id, video_duration)
+                st["_audio_done"] = True
             elif mode == "full":
                 add_sentence(final_answer)
             else:
@@ -2007,11 +2011,11 @@ def create_app(config: dict) -> FastAPI:
             "sentences": list(turn["sentences"]),
             "tool_calls": list(turn.get("tool_calls", [])),
             "error": turn["error"],
-            "stream": turn.get("stream"),
+            "stream": ({k: v for k, v in turn.get("stream", {}).items() if not k.startswith("_")} if turn.get("stream") else None),
         }
 
     @app.get("/api/stream/video/{turn_id}")
-    def stream_video(turn_id: str):
+    def stream_video(turn_id: str, offset: int = 0):
         a = app.state.app
         turn = a.turns.get(turn_id)
         sid = ((turn or {}).get("stream") or {}).get("sid", "")
@@ -2022,7 +2026,42 @@ def create_app(config: dict) -> FastAPI:
         r = httpx.get(base + f"/api/stream/{sid}/video", timeout=300)
         if r.status_code != 200:
             raise HTTPException(404, "video not ready")
-        return Response(content=r.content, media_type="video/mp4")
+        data = r.content
+        if offset:
+            data = data[offset:] if offset < len(data) else b""
+        return Response(content=data, media_type="video/mp4")
+
+    @app.get("/api/stream/audio/{turn_id}")
+    def stream_audio(turn_id: str):
+        a = app.state.app
+        turn = a.turns.get(turn_id)
+        st = (turn or {}).get("stream") or {}
+        parts = st.get("_audio_parts") or []
+
+        def _decode(path):
+            try:
+                out = subprocess.run(f'ffmpeg -loglevel error -y -i "{path}" -f s16le -ar 24000 -ac 1 -', shell=True, capture_output=True)
+                return out.stdout
+            except Exception:
+                return b""
+
+        def gen():
+            hdr = b"RIFF" + (0xFFFFFFFF).to_bytes(4, "little") + b"WAVE"
+            hdr += b"fmt " + (16).to_bytes(4, "little")
+            hdr += (1).to_bytes(2, "little") + (1).to_bytes(2, "little")
+            hdr += (24000).to_bytes(4, "little") + (48000).to_bytes(4, "little")
+            hdr += (2).to_bytes(2, "little") + (16).to_bytes(2, "little")
+            hdr += b"data" + (0xFFFFFFFF).to_bytes(4, "little")
+            yield hdr
+            idx = 0
+            while True:
+                while idx < len(parts):
+                    yield _decode(parts[idx])
+                    idx += 1
+                if st.get("_audio_done"):
+                    break
+                time.sleep(0.1)
+        return StreamingResponse(gen(), media_type="audio/wav")
 
     @app.post("/api/tts")
     async def tts_full(

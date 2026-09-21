@@ -184,6 +184,73 @@ function startVideo(url, onEnd, onError, onStart) {
   v.load();
 }
 
+// ---- streaming (MSE) player: plays the growing fMP4 as DITTO renders it ----
+let streamMS = null, streamSB = null, streamOffset = 0, streamVideoUrl = "", streamEnded = false, streamTimer = null, streamAudio = null, streamStarted = false;
+
+function startStreamVideo(videoUrl, audioUrl, onEnd) {
+  const v = $("avatar-talk");
+  if (!v) return;
+  videoPlaying = true;
+  v.muted = false;
+  streamVideoUrl = videoUrl;
+  streamOffset = 0;
+  streamEnded = false;
+  streamStarted = false;
+  streamAudio = audioUrl ? new Audio(audioUrl) : null;
+  streamMS = new MediaSource();
+  v.src = URL.createObjectURL(streamMS);
+  v.style.display = "none";
+  streamMS.addEventListener("sourceopen", () => {
+    try {
+      streamSB = streamMS.addSourceBuffer('video/mp4; codecs="avc1.640020"');
+      streamSB.addEventListener("updateend", () => { if (!streamEnded) scheduleStreamPoll(); });
+      scheduleStreamPoll();
+    } catch (e) {
+      stopStream();
+      startVideo(videoUrl, onEnd, onEnd);
+    }
+  });
+  v.onended = () => { videoPlaying = false; v.style.display = "none"; stopStream(); if (onEnd) onEnd(); };
+  v.onerror = () => { videoPlaying = false; v.style.display = "none"; stopStream(); if (onEnd) onEnd(); };
+}
+
+function scheduleStreamPoll() {
+  if (streamTimer) clearTimeout(streamTimer);
+  streamTimer = setTimeout(pollStream, 150);
+}
+
+async function pollStream() {
+  if (!streamSB || !streamMS || streamMS.readyState === "closed") return;
+  if (streamSB.updating) { scheduleStreamPoll(); return; }
+  try {
+    const url = streamOffset > 0 ? `${streamVideoUrl}?offset=${streamOffset}` : streamVideoUrl;
+    const r = await fetch(url);
+    if (r.status === 200) {
+      const buf = await r.arrayBuffer();
+      if (buf.byteLength > 0) {
+        streamSB.appendBuffer(new Uint8Array(buf));
+        streamOffset += buf.byteLength;
+        if (!streamStarted) {
+          streamStarted = true;
+          const v = $("avatar-talk");
+          v.style.display = "";
+          v.play().then(() => { if (streamAudio) streamAudio.play().catch(() => {}); }).catch(() => {});
+        }
+      }
+    }
+  } catch (e) {}
+  if (!streamEnded) scheduleStreamPoll();
+}
+
+function stopStream() {
+  streamEnded = true;
+  if (streamTimer) { clearTimeout(streamTimer); streamTimer = null; }
+  if (streamMS && streamMS.readyState === "open") {
+    try { streamMS.endOfStream(); } catch (e) {}
+  }
+  streamMS = null; streamSB = null; streamAudio = null; streamStarted = false;
+}
+
 function addVideoReplay(bubble, url, autoPlay, audioUrl) {
   addReplayButton(bubble, mediaSequence.length);
   addMedia("video", url, bubble, autoPlay !== false, audioUrl);
@@ -544,17 +611,9 @@ async function pollTurn(turnId, userBubble) {
     if (isStreaming && st.stream && st.stream.video_url && !streamPlayed) {
       streamPlayed = true;
       setTalking(true);
-      startVideo(st.stream.video_url, () => {
+      startStreamVideo(st.stream.video_url, st.stream.audio_url, () => {
         setTalking(false);
         endTurn();
-      }, () => {
-        setTalking(false);
-        endTurn();
-      }, () => {
-        if (st.stream.audio_url) {
-          const au = new Audio(st.stream.audio_url);
-          au.play().catch(() => {});
-        }
       });
       scrollToBottom();
     }
@@ -563,7 +622,9 @@ async function pollTurn(turnId, userBubble) {
       localStorage.removeItem("talk_active_turn");
       $("status").textContent = "Hold the button to talk";
       turnStreaming = false;
-      if (mediaIndex === -1 && !(isStreaming && streamPlayed)) {
+      if (isStreaming && streamPlayed) {
+        stopStream();
+      } else if (mediaIndex === -1) {
         setTalking(false);
         endTurn();
       }
