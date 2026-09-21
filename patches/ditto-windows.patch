@@ -54,7 +54,7 @@ index 9cef03d..d50063c 100644
  
      elif model_path.endswith(".engine") or model_path.endswith(".trt"):
 diff --git a/stream_pipeline_online.py b/stream_pipeline_online.py
-index 0fbfd75..ea6a45c 100644
+index 0fbfd75..28e8460 100644
 --- a/stream_pipeline_online.py
 +++ b/stream_pipeline_online.py
 @@ -1,5 +1,6 @@
@@ -107,3 +107,32 @@ index 0fbfd75..ea6a45c 100644
  
      def putback_worker(self):
          try:
+@@ -393,7 +400,7 @@ class StreamSDK:
+         
+         global_idx = 0   # frame idx, for template
+         local_idx = 0    # for cur audio_feat
+-        gen_frame_idx = 0
++        self.gen_frame_idx = 0
+         while not self.stop_event.is_set():
+             try:
+                 item = self.audio2motion_queue.get(timeout=1)    # audio feat
+@@ -443,8 +450,8 @@ class StreamSDK:
+                     x_d_info_list = self.audio2motion.cvt_fmt(valid_res_kp_seq)
+ 
+                     for x_d_info in x_d_info_list:
+-                        frame_idx = _mirror_index(gen_frame_idx, self.source_info_frames)
+-                        ctrl_kwargs = self._get_ctrl_info(gen_frame_idx)
++                        frame_idx = _mirror_index(self.gen_frame_idx, self.source_info_frames)
++                        ctrl_kwargs = self._get_ctrl_info(self.gen_frame_idx)
+ 
+                         while not self.stop_event.is_set():
+                             try:
+@@ -453,7 +460,7 @@ class StreamSDK:
+                             except queue.Full:
+                                 continue
+ 
+-                        gen_frame_idx += 1
++                        self.gen_frame_idx += 1
+ 
+                     res_kp_seq_valid_start += real_valid_len
+                 
