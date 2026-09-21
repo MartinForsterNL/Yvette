@@ -1,3 +1,68 @@
+diff --git a/core/atomic_components/video_audio_writer.py b/core/atomic_components/video_audio_writer.py
+new file mode 100644
+index 0000000..3528f58
+--- /dev/null
++++ b/core/atomic_components/video_audio_writer.py
+@@ -0,0 +1,59 @@
++import os
++import subprocess
++import numpy as np
++import imageio_ffmpeg
++
++
++class VideoAudioWriter:
++    """Streams raw video frames + raw audio samples into a single ffmpeg process,
++    producing an interleaved audio+video fMP4 (fragmented)."""
++
++    def __init__(self, video_path, audio_path, fps=25, **kwargs):
++        self.codec = kwargs.get("vcodec", "libx264")
++        self.crf = kwargs.get("crf", 18)
++        self.gop = kwargs.get("gop", 25)
++        self.movflags = kwargs.get("movflags", "")
++        self.audio_offset = float(kwargs.get("audio_offset", 0.6))
++        self.fps = fps
++        self.video_path = video_path
++        self.audio_path = audio_path
++        self.proc = None
++        os.makedirs(os.path.dirname(video_path), exist_ok=True)
++        open(audio_path, "wb").close()
++
++    def _start(self, w, h):
++        cmd = [
++            imageio_ffmpeg.get_ffmpeg_exe(), "-y",
++            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{w}x{h}", "-r", str(self.fps), "-i", "-",
++            "-itsoffset", str(self.audio_offset), "-f", "f32le", "-ar", "16000", "-ac", "1", "-re", "-i", self.audio_path,
++            "-map", "0:v", "-map", "1:a",
++            "-c:v", self.codec, "-pix_fmt", "yuv420p", "-crf", str(self.crf), "-g", str(self.gop),
++            "-c:a", "aac", "-b:a", "128k",
++        ]
++        if self.movflags:
++            cmd += ["-movflags", self.movflags]
++        cmd += [self.video_path]
++        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++
++    def __call__(self, img, fmt="bgr"):
++        if fmt == "bgr":
++            frame = img[..., ::-1]
++        else:
++            frame = img
++        if self.proc is None:
++            h, w = frame.shape[:2]
++            self._start(w, h)
++        self.proc.stdin.write(frame.tobytes())
++
++    def write_audio(self, samples):
++        data = np.ascontiguousarray(samples, dtype=np.float32).tobytes()
++        with open(self.audio_path, "ab") as f:
++            f.write(data)
++
++    def close(self):
++        if self.proc is not None:
++            try:
++                self.proc.stdin.close()
++            except Exception:
++                pass
++            self.proc.wait()
 diff --git a/core/atomic_components/writer.py b/core/atomic_components/writer.py
 index 4c075b5..78d7c07 100644
 --- a/core/atomic_components/writer.py
@@ -54,7 +119,7 @@ index 9cef03d..d50063c 100644
  
      elif model_path.endswith(".engine") or model_path.endswith(".trt"):
 diff --git a/stream_pipeline_online.py b/stream_pipeline_online.py
-index 0fbfd75..28e8460 100644
+index 0fbfd75..75b1b98 100644
 --- a/stream_pipeline_online.py
 +++ b/stream_pipeline_online.py
 @@ -1,5 +1,6 @@
@@ -64,6 +129,15 @@ index 0fbfd75..28e8460 100644
  import numpy as np
  import traceback
  from tqdm import tqdm
+@@ -11,7 +12,7 @@ from core.atomic_components.motion_stitch import MotionStitch
+ from core.atomic_components.warp_f3d import WarpF3D
+ from core.atomic_components.decode_f3d import DecodeF3D
+ from core.atomic_components.putback import PutBack
+-from core.atomic_components.writer import VideoWriterByImageIO
++from core.atomic_components.video_audio_writer import VideoAudioWriter
+ from core.atomic_components.wav2feat import Wav2Feat
+ from core.atomic_components.cfg import parse_cfg, print_cfg
+ 
 @@ -124,6 +125,7 @@ class StreamSDK:
          self.fix_kp_cond = kwargs.get("fix_kp_cond", 0)
          self.fix_kp_cond_dim = kwargs.get("fix_kp_cond_dim", None)  # [ds,de]
@@ -77,7 +151,7 @@ index 0fbfd75..28e8460 100644
          self.output_path = output_path
          self.tmp_output_path = output_path + ".tmp.mp4"
 -        self.writer = VideoWriterByImageIO(self.tmp_output_path)
-+        self.writer = VideoWriterByImageIO(self.tmp_output_path, movflags=self.movflags)
++        self.writer = VideoAudioWriter(self.tmp_output_path, self.tmp_output_path + ".audio.raw", movflags=self.movflags)
          self.writer_pbar = tqdm(desc="writer")
  
          # ======== Audio Feat Buffer ========

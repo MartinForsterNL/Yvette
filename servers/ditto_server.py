@@ -150,6 +150,10 @@ async def stream_audio(sid: str, audio: UploadFile = File(...)):
         f.write(await audio.read())
     audio_data, sr = librosa.load(tmp, sr=16000)
     audio_data = audio_data.astype(np.float32)
+    try:
+        st["sdk"].writer.write_audio(audio_data)
+    except Exception:
+        pass
     with lock:
         st["pending"] = np.concatenate([st["pending"], audio_data])
         n = 0
