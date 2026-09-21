@@ -500,10 +500,13 @@ async function pollTurn(turnId, userBubble) {
   let seen = 0;
   let seenTools = 0;
   let userTextShown = false;
+  let isStreaming = false;
   while (true) {
     const r = await fetch("/api/talk/status/" + turnId);
     const st = await r.json();
     if (!r.ok) throw new Error(st.detail || st.error || JSON.stringify(st));
+
+    isStreaming = st.mode === "streaming";
 
     if (!userTextShown && st.user_text) {
       const _s = document.createElement("span");
@@ -524,7 +527,7 @@ async function pollTurn(turnId, userBubble) {
 
     const sentences = st.sentences || [];
     for (let i = seen; i < sentences.length; i++) {
-      if (st.stream) {
+      if (isStreaming) {
         const b = document.createElement("div");
         b.className = "bubble assistant";
         const sp = document.createElement("span");
@@ -537,9 +540,16 @@ async function pollTurn(turnId, userBubble) {
     }
     seen = sentences.length;
 
-    if (st.stream && st.stream.video_url && !streamPlayed) {
+    if (isStreaming && st.stream && st.stream.video_url && !streamPlayed) {
       streamPlayed = true;
-      startVideo(st.stream.video_url, () => {}, () => {});
+      setTalking(true);
+      startVideo(st.stream.video_url, () => {
+        setTalking(false);
+        endTurn();
+      }, () => {
+        setTalking(false);
+        endTurn();
+      });
       if (st.stream.audio_url) {
         const au = new Audio(st.stream.audio_url);
         au.play().catch(() => {});
@@ -551,7 +561,7 @@ async function pollTurn(turnId, userBubble) {
       localStorage.removeItem("talk_active_turn");
       $("status").textContent = "Hold the button to talk";
       turnStreaming = false;
-      if (mediaIndex === -1) {
+      if (mediaIndex === -1 && !(isStreaming && streamPlayed)) {
         setTalking(false);
         endTurn();
       }
@@ -560,7 +570,7 @@ async function pollTurn(turnId, userBubble) {
       localStorage.removeItem("talk_active_turn");
       $("status").textContent = "Error: " + (st.error || "unknown");
       turnStreaming = false;
-      if (mediaIndex === -1) {
+      if (mediaIndex === -1 && !(isStreaming && streamPlayed)) {
         setTalking(false);
         endTurn();
       }

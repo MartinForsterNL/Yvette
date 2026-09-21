@@ -1092,6 +1092,26 @@ class TalkApp:
             log_event("error", f"audio concat failed: {type(e).__name__}: {e}")
         return ""
 
+    def _save_stream_video(self, sid, turn_id):
+        """Copy the finished streaming video into the turn dir for replay/history.
+        Returns the local turn-file URL, or "" on failure."""
+        ditto_cfg = self.config.get("ditto", {}) or {}
+        base = (ditto_cfg.get("base_url") or "").rstrip("/")
+        if not base or not sid:
+            return ""
+        try:
+            r = httpx.get(base + f"/api/stream/{sid}/video", timeout=300)
+            if r.status_code != 200:
+                return ""
+            out = os.path.join(self.turns_dir, turn_id, "stream_video.mp4")
+            with open(out, "wb") as f:
+                f.write(r.content)
+            if os.path.getsize(out) > 0:
+                return f"/api/turn-file/{turn_id}/stream_video.mp4"
+        except Exception as e:
+            log_event("error", f"stream video save failed: {type(e).__name__}: {e}")
+        return ""
+
     def _avatars_dir(self):
         return self._ditto_paths()[3]
 
@@ -1706,7 +1726,13 @@ class TalkApp:
                     turn["sentences"].append({"index": idx, "text": c, "audio_url": audio_url, "video_url": ""})
                 if sid:
                     self._ditto_stream_end(sid)
-                turn["stream"] = {"sid": sid, "video_url": f"/api/stream/video/{turn_id}" if sid else "", "audio_url": self._concat_audio(audio_parts, turn_id)}
+                video_url = f"/api/stream/video/{turn_id}" if sid else ""
+                keep = (self.config.get("ditto", {}) or {}).get("streaming_keep_video", False)
+                if sid and keep:
+                    saved = self._save_stream_video(sid, turn_id)
+                    if saved:
+                        video_url = saved
+                turn["stream"] = {"sid": sid, "video_url": video_url, "audio_url": self._concat_audio(audio_parts, turn_id)}
             elif mode == "full":
                 add_sentence(final_answer)
             else:
@@ -1913,6 +1939,7 @@ def create_app(config: dict) -> FastAPI:
             "turn_id": turn_id,
             "conv_id": conv_id,
             "status": "processing",
+            "mode": mode,
             "user_text": "",
             "user_audio_url": user_audio_url,
             "user_image_url": user_image_url,
@@ -1940,6 +1967,7 @@ def create_app(config: dict) -> FastAPI:
             "turn_id": turn["turn_id"],
             "conv_id": turn["conv_id"],
             "status": turn["status"],
+            "mode": turn.get("mode", ""),
             "user_text": turn["user_text"],
             "user_audio_url": turn.get("user_audio_url"),
             "user_image_url": turn.get("user_image_url"),
