@@ -63,6 +63,7 @@ Step "DITTO (talking-head avatar)"
 $ditto = Join-Path $Engines "ditto"
 if (-not (Test-Path (Join-Path $ditto ".git"))) {
     git clone https://github.com/justinjohn0306/ditto-talkinghead-windows.git $ditto
+    git -C $ditto checkout 227f71e003eb377e1924e304e2f069999037dff8  # pinned
 } else { Warn "ditto repo already cloned" }
 
 $dVenv = Join-Path $ditto "venv"
@@ -104,6 +105,7 @@ if (Test-Path $patch) {
 $dittoCkpt = Join-Path $ditto "checkpoints"
 if (-not (Test-Path (Join-Path $dittoCkpt ".git"))) {
     git clone https://huggingface.co/justinjohn-03/ditto-talkinghead-windows $dittoCkpt
+    git -C $dittoCkpt checkout 83630257bffec1d75ebe0246f570603afc036262  # pinned
 } else { Warn "ditto checkpoints already cloned" }
 
 # Build TensorRT engines for THIS GPU
@@ -133,6 +135,7 @@ Step "Breeze (TTS)"
 $breeze = Join-Path $Engines "breeze"
 if (-not (Test-Path (Join-Path $breeze ".git"))) {
     git clone https://github.com/breezeblue-ai/breeze-tts.git $breeze
+    git -C $breeze checkout 008f769016b0a24711becd7a4925030bc93f608c  # pinned
 } else { Warn "breeze repo already cloned" }
 
 $bVenv = Join-Path $breeze "venv"
@@ -177,6 +180,7 @@ Step "LuxTTS (TTS)"
 $lux = Join-Path $Engines "lux"
 if (-not (Test-Path (Join-Path $lux ".git"))) {
     git clone https://github.com/ysharma3501/LuxTTS.git $lux
+    git -C $lux checkout 28ae6a61151684fffc9d1a7aa15eafa02286fe0b  # pinned
 } else { Warn "lux repo already cloned" }
 
 $lVenv = Join-Path $lux "venv"
