@@ -92,3 +92,11 @@ models/
 Thumbs.db
 .idea/
 .vscode/
+
+# ===== working environment (not versioned) =====
+# scratch files, test scripts, proposals and runtime logs live here
+_work/
+app.log
+app.err
+ditto_server.log
+ditto_server.err
