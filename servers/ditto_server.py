@@ -1,4 +1,42 @@
 import os, sys, time, uuid, threading, subprocess, re
+import queue
+
+
+def ts():
+    return time.strftime("%H:%M:%S") + f".{int(time.time() * 1000) % 1000:03d}"
+
+
+YEL = chr(27) + "[33m"
+RST = chr(27) + "[0m"
+
+
+def _enable_ansi():
+    if os.name == "nt":
+        try:
+            import ctypes
+            k = ctypes.windll.kernel32
+            k.SetConsoleMode(k.GetStdHandle(-11), 7)
+        except Exception:
+            pass
+
+
+def file_monitor(st):
+    last = 0
+    try:
+        while not st.get("done"):
+            try:
+                size = os.path.getsize(st["tmp_path"])
+            except OSError:
+                size = 0
+            if size != last:
+                print(f"\n{ts()} [fragment] +{size - last}B size={size}", flush=True)
+                last = size
+            time.sleep(0.1)
+    except Exception as e:
+        print(f"\n{ts()} [fragment] monitor error: {e}", flush=True)
+
+
+_enable_ansi()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)
@@ -6,8 +44,8 @@ os.chdir(BASE_DIR)
 
 import numpy as np
 import librosa
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from stream_pipeline_online import StreamSDK
 from avatar_cache import AvatarCache
@@ -67,7 +105,7 @@ def ensure_sdk():
     global sdk
     if sdk is None:
         sdk = StreamSDK(CFG, DATA_ROOT)
-        print("[ditto] model loaded")
+        print(f"{ts()} [ditto] model loaded")
     return sdk
 
 @app.on_event("startup")
@@ -127,6 +165,42 @@ CHUNK_ADVANCE = 3200  # 5 frames * 0.04s * 16000
 CHUNK_PRE_PAD = 2000
 CHUNK_POST_PAD = 6480
 
+INGEST_LEAD = 1.0  # seconds to submit each chunk before the previous one runs out
+
+
+def ingest_worker(st):
+    start = time.time()
+    next_submit = 0.0
+    idx = 0
+    try:
+        while True:
+            item = st["q"].get()
+            if item is None:
+                break
+            audio_data = item
+            duration = len(audio_data) / 16000.0
+            target = start + next_submit
+            now = time.time()
+            wait = max(0.0, target - now)
+            if wait > 0:
+                time.sleep(wait)
+            idx += 1
+            print(f"\n{ts()} {YEL}[ingest]{RST} chunk {idx} dur={duration:.2f}s wait={wait:.2f}s", flush=True)
+            try:
+                st["sdk"].writer.write_audio(audio_data)
+            except Exception:
+                pass
+            with lock:
+                st["pending"] = np.concatenate([st["pending"], audio_data])
+                while st["pos"] + CHUNK_WINDOW <= len(st["pending"]):
+                    window = st["pending"][st["pos"] : st["pos"] + CHUNK_WINDOW]
+                    st["sdk"].run_chunk(window)
+                    st["pos"] += CHUNK_ADVANCE
+            next_submit += duration - INGEST_LEAD
+    except Exception as e:
+        print(f"\n{ts()} {YEL}[ingest]{RST} worker error: {e}", flush=True)
+
+
 streams = {}
 
 @app.post("/api/stream/start")
@@ -171,8 +245,13 @@ async def stream_start(avatar: str = Form(""), head_motion_alpha: str = Form("")
             s.run_chunk(pre_roll[pr_pos : pr_pos + CHUNK_WINDOW])
             pr_pos += CHUNK_ADVANCE
         t3 = time.time()
-        print(f"[ditto] sdk={t1-t0:.2f}s setup={t2-t1:.2f}s pre-roll={t3-t2:.2f}s total={t3-t0:.2f}s avatar_cache={'hit' if source_info is not None else 'miss'}", flush=True)
-        streams[rid] = {"sdk": s, "out_path": out_path, "tmp_path": out_path + ".tmp.mp4", "done": False, "pending": np.zeros(CHUNK_PRE_PAD, dtype=np.float32), "pos": 0, "finalized": False}
+        print(f"\n{ts()} [ditto] sdk={t1-t0:.2f}s setup={t2-t1:.2f}s pre-roll={t3-t2:.2f}s total={t3-t0:.2f}s avatar_cache={'hit' if source_info is not None else 'miss'}", flush=True)
+        streams[rid] = {"sdk": s, "out_path": out_path, "tmp_path": out_path + ".tmp.mp4", "done": False, "pending": np.zeros(CHUNK_PRE_PAD, dtype=np.float32), "pos": 0, "finalized": False, "q": queue.Queue(), "worker": None}
+        _st = streams[rid]
+        _st["worker"] = threading.Thread(target=ingest_worker, args=(_st,), daemon=True)
+        _st["worker"].start()
+        _st["monitor"] = threading.Thread(target=file_monitor, args=(_st,), daemon=True)
+        _st["monitor"].start()
     return {"ok": True, "stream_id": rid, "avatar_cached": source_info is not None}
 
 
@@ -186,27 +265,7 @@ async def stream_audio(sid: str, audio: UploadFile = File(...), final: str = For
         f.write(await audio.read())
     audio_data, sr = librosa.load(tmp, sr=16000)
     audio_data = audio_data.astype(np.float32)
-    try:
-        st["sdk"].writer.write_audio(audio_data)
-    except Exception:
-        pass
-    with lock:
-        st["pending"] = np.concatenate([st["pending"], audio_data])
-        n = 0
-        while st["pos"] + CHUNK_WINDOW <= len(st["pending"]):
-            window = st["pending"][st["pos"] : st["pos"] + CHUNK_WINDOW]
-            st["sdk"].run_chunk(window)
-            st["pos"] += CHUNK_ADVANCE
-            n += 1
-        if (final or "0") == "1":
-            st["pending"] = np.concatenate([st["pending"], np.zeros(CHUNK_POST_PAD, dtype=np.float32)])
-            while st["pos"] + CHUNK_WINDOW <= len(st["pending"]):
-                window = st["pending"][st["pos"] : st["pos"] + CHUNK_WINDOW]
-                st["sdk"].run_chunk(window)
-                st["pos"] += CHUNK_ADVANCE
-            st["sdk"].finalize()
-            st["finalized"] = True
-        print(f"[stream-audio] fed {n} windows, pending={len(st['pending'])}, pos={st['pos']}", flush=True)
+    st["q"].put(audio_data)
     frames = int(getattr(st["sdk"], "gen_frame_idx", 0) or 0)
     return {"ok": True, "frames": frames}
 
@@ -216,6 +275,9 @@ async def stream_end(sid: str):
     st = streams.get(sid)
     if not st:
         raise HTTPException(404, "unknown stream")
+    st["q"].put(None)
+    if st["worker"] is not None:
+        st["worker"].join()
     with lock:
         if not st.get("finalized"):
             st["pending"] = np.concatenate([st["pending"], np.zeros(CHUNK_POST_PAD, dtype=np.float32)])
@@ -240,15 +302,34 @@ async def stream_end(sid: str):
 
 
 @app.get("/api/stream/{sid}/video")
-async def stream_video(sid: str):
+async def stream_video(sid: str, request: Request):
     st = streams.get(sid)
     if not st or not os.path.exists(st["tmp_path"]):
         return JSONResponse({"ok": False}, status_code=404)
-    try:
-        print(f"[video] size={os.path.getsize(st['tmp_path'])}", flush=True)
-    except Exception:
-        pass
-    return FileResponse(st["tmp_path"], media_type="video/mp4")
+    path = st["tmp_path"]
+    size = os.path.getsize(path)
+    print(f"\n{ts()} [video] size={size}", flush=True)
+    rng = request.headers.get("range", "")
+    if rng.startswith("bytes="):
+        try:
+            start = int(rng[6:].split("-", 1)[0] or "0")
+        except ValueError:
+            start = 0
+        if start >= size:
+            return Response(content=b"", status_code=416, headers={"Content-Range": f"bytes */{size}"})
+        def gen():
+            with open(path, "rb") as f:
+                f.seek(start)
+                left = size - start
+                while left > 0:
+                    b = f.read(min(65536, left))
+                    if not b:
+                        break
+                    left -= len(b)
+                    yield b
+        return StreamingResponse(gen(), media_type="video/mp4", status_code=206,
+                                 headers={"Content-Length": str(size - start), "Content-Range": f"bytes {start}-{size - 1}/{size}"})
+    return FileResponse(path, media_type="video/mp4")
 
 @app.get("/api/health")
 def health():
@@ -256,4 +337,22 @@ def health():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8902)
+    import logging
+    LOG_CONFIG = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {"format": "%(asctime)s %(levelname)s: %(message)s", "datefmt": "%H:%M:%S"},
+            "access": {"format": "%(asctime)s %(levelname)s: %(message)s", "datefmt": "%H:%M:%S"},
+        },
+        "handlers": {
+            "default": {"class": "logging.StreamHandler", "formatter": "default", "stream": "ext://sys.stderr"},
+            "access": {"class": "logging.StreamHandler", "formatter": "access", "stream": "ext://sys.stdout"},
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "INFO"},
+            "uvicorn.error": {"handlers": ["default"], "level": "INFO"},
+            "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
+        },
+    }
+    uvicorn.run(app, host="0.0.0.0", port=8902, log_config=LOG_CONFIG)
