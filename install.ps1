@@ -76,7 +76,7 @@ $dPy = Join-Path $dVenv "Scripts\python.exe"
 & $dPy -m pip install cuda-python==12.6.2.post1 nvidia-cublas-cu12==12.6.4.1 nvidia-cuda-runtime-cu12==12.1.105 nvidia-cudnn-cu12==9.6.0.74
 & $dPy -m pip install onnx onnxruntime tifffile==2024.12.12 imageio==2.36.1 imageio-ffmpeg==0.5.1 pooch==1.8.2
 & $dPy -m pip install polygraphy colored "triton-windows<3.2"
-& $dPy -m pip install fastapi uvicorn python-multipart
+& $dPy -m pip install fastapi uvicorn python-multipart cython
 
 # TensorRT python bindings from the SDK (the only reliable source for 8.6.1.6), matching Python 3.10
 $trtWhl = Get-ChildItem -Path $TensorRTPy -Filter "tensorrt-8.6.1-cp310*.whl" -ErrorAction SilentlyContinue | Select-Object -First 1
