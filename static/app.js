@@ -159,7 +159,7 @@ function startVideo(url, onEnd, onError, onStart) {
   const v = $("avatar-talk");
   if (!v) return;
   videoPlaying = true;
-  v.muted = false;
+  v.muted = muted;
   v.style.display = "none"; // keep hidden until the first frame is ready
   let ready = false;
   const begin = () => {
@@ -186,18 +186,21 @@ function startVideo(url, onEnd, onError, onStart) {
 }
 
 // ---- streaming (MSE) player: plays the growing fMP4 as DITTO renders it ----
-let streamMS = null, streamSB = null, streamOffset = 0, streamVideoUrl = "", streamEnded = false, streamTimer = null, streamAudio = null, streamStarted = false, streamBuffer = 0;
+let streamMS = null, streamSB = null, streamOffset = 0, streamVideoUrl = "", streamEnded = false, streamTimer = null, streamAudio = null, streamStarted = false, streamBuffer = 0, streamWS = null, streamEndFired = false, streamOnEnd = null, streamQueue = [];
 
 function startStreamVideo(videoUrl, audioUrl, buffer, onEnd) {
   const v = $("avatar-talk");
   if (!v) return;
   videoPlaying = true;
-  v.muted = false;
+  v.muted = muted;
   streamVideoUrl = videoUrl;
   streamOffset = 0;
   streamEnded = false;
   streamStarted = false;
   streamBuffer = buffer || 0;
+  streamOnEnd = onEnd;
+  streamEndFired = false;
+  streamQueue = [];
   streamAudio = audioUrl ? new Audio(audioUrl) : null;
   streamMS = new MediaSource();
   v.src = URL.createObjectURL(streamMS);
@@ -206,14 +209,33 @@ function startStreamVideo(videoUrl, audioUrl, buffer, onEnd) {
     try {
       streamSB = streamMS.addSourceBuffer('video/mp4; codecs="avc1.640020"');
       streamSB.addEventListener("updateend", onStreamAppendDone);
-      scheduleStreamPoll();
+      const wsUrl = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + videoUrl.replace("/api/stream/video/", "/api/stream/ws/");
+      streamWS = new WebSocket(wsUrl);
+      streamWS.binaryType = "arraybuffer";
+      streamWS.onmessage = (e) => {
+        if (typeof e.data === "string") {
+          if (e.data === "START") { console.log("stream START"); }
+          else if (e.data === "END") {
+            console.log("stream END");
+            _streamDebug("END");
+            streamEnded = true;
+            if (streamWS) { try { streamWS.close(); } catch (e2) {} streamWS = null; }
+            pumpStreamQueue();
+            streamTimer = setTimeout(() => finishStream("fallback"), 6000);
+          }
+        } else {
+          streamQueue.push(new Uint8Array(e.data));
+          pumpStreamQueue();
+        }
+      };
+      streamWS.onerror = () => { finishStream("ws-error"); };
     } catch (e) {
       stopStream();
       startVideo(videoUrl, onEnd, onEnd);
     }
   });
-  v.onended = () => { videoPlaying = false; v.style.display = "none"; stopStream(); if (onEnd) onEnd(); };
-  v.onerror = () => { videoPlaying = false; v.style.display = "none"; stopStream(); if (onEnd) onEnd(); };
+  v.onended = () => { finishStream("ended"); };
+  v.onerror = () => { finishStream("video-error"); };
 }
 
 function onStreamAppendDone() {
@@ -226,7 +248,38 @@ function onStreamAppendDone() {
       v.play().then(() => { if (streamAudio) streamAudio.play().catch(() => {}); }).catch(() => {});
     }
   }
-  if (!streamEnded) scheduleStreamPoll();
+  pumpStreamQueue();
+  if (streamEnded && streamQueue.length === 0 && streamMS && streamMS.readyState === "open") {
+    try { streamMS.endOfStream(); } catch (e) {}
+  }
+}
+
+function pumpStreamQueue() {
+  if (!streamSB || !streamMS || streamMS.readyState !== "open") return;
+  if (streamSB.updating || streamQueue.length === 0) return;
+  const chunk = streamQueue.shift();
+  try { streamSB.appendBuffer(chunk); }
+  catch (e) { streamQueue.unshift(chunk); }
+}
+
+function _streamDebug(tag) {
+  const v = $("avatar-talk");
+  let bufEnd = null, cur = v ? v.currentTime : 0, dur = v && v.duration ? v.duration : 0;
+  if (streamSB && streamSB.buffered && streamSB.buffered.length > 0) {
+    bufEnd = streamSB.buffered.end(streamSB.buffered.length - 1);
+  }
+  console.log("[stream] " + tag + ": bufferedEnd=" + (bufEnd === null ? "n/a" : bufEnd.toFixed(2)) + " currentTime=" + cur.toFixed(2) + " tail=" + (bufEnd === null ? "n/a" : (bufEnd - cur).toFixed(2)) + " duration=" + (dur ? dur.toFixed(2) : "n/a"));
+}
+
+function finishStream(reason) {
+  if (streamEndFired) return;
+  _streamDebug(reason || "finish");
+  streamEndFired = true;
+  videoPlaying = false;
+  const v = $("avatar-talk");
+  if (v) v.style.display = "none";
+  stopStream();
+  if (streamOnEnd) streamOnEnd();
 }
 
 function scheduleStreamPoll() {
@@ -254,10 +307,11 @@ async function pollStream() {
 function stopStream() {
   streamEnded = true;
   if (streamTimer) { clearTimeout(streamTimer); streamTimer = null; }
+  if (streamWS) { try { streamWS.close(); } catch (e) {} streamWS = null; }
   if (streamMS && streamMS.readyState === "open") {
     try { streamMS.endOfStream(); } catch (e) {}
   }
-  streamMS = null; streamSB = null; streamAudio = null; streamStarted = false;
+  streamMS = null; streamSB = null; streamAudio = null; streamStarted = false; streamQueue = [];
 }
 
 function addVideoReplay(bubble, url, autoPlay, audioUrl) {
@@ -591,6 +645,7 @@ async function pollTurn(turnId, userBubble) {
   let seenTools = 0;
   let userTextShown = false;
   let isStreaming = false;
+  let lastStreamBubble = null;
   while (true) {
     const r = await fetch("/api/talk/status/" + turnId);
     const st = await r.json();
@@ -624,6 +679,8 @@ async function pollTurn(turnId, userBubble) {
         sp.innerHTML = linkify(sentences[i].text);
         b.appendChild(sp);
         $("conversation").appendChild(b);
+        lastStreamBubble = b;
+        scrollToBottom();
       } else {
         addAssistantSentence(sentences[i]);
       }
@@ -646,6 +703,9 @@ async function pollTurn(turnId, userBubble) {
       turnStreaming = false;
       preheatDone = false;
       if (isStreaming && streamPlayed) {
+        if (st.stream && st.stream.video_url && lastStreamBubble) {
+          addVideoReplay(lastStreamBubble, st.stream.video_url, false, "");
+        }
         stopStream();
       } else if (mediaIndex === -1) {
         setTalking(false);
@@ -836,6 +896,8 @@ $("mute-btn").onclick = () => {
   muted = !muted;
   localStorage.setItem("talk_muted", muted ? "1" : "0");
   if (player) player.muted = muted;
+  const _v = $("avatar-talk");
+  if (_v) _v.muted = muted;
   if (muted) stopPlayback();
   updateMuteButton();
 };

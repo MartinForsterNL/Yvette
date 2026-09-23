@@ -1824,7 +1824,7 @@ function renderTalkProfiles(d) {
     nm.textContent = name + (isDefault ? " (default)" : "");
     const det = document.createElement("span");
     det.className = "prompt-snippet";
-    det.textContent = "personality: " + (p.personality || "-") + "  |  tts: " + (p.tts_model || "-") + "  |  voice: " + (profVoiceName(p.voice_id) || "none") + "  |  design: " + (profVoiceName(p.instruction_id) || "none") + "  |  llm: " + (p.model || "-");
+    det.textContent = "personality: " + (p.personality || "-") + "  |  tts: " + (p.tts_model || "-") + "  |  voice: " + (profVoiceName(p.voice_id) || "none") + "  |  design: " + (profVoiceName(p.instruction_id) || "none") + "  |  llm: " + (p.model || "-") + "  |  mode: " + (p.mode || "chunked");
     info.appendChild(nm); info.appendChild(det);
     const actions = document.createElement("div");
     actions.className = "profile-actions";

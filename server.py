@@ -17,6 +17,7 @@ Endpoints:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import base64
 import datetime
 import json
@@ -34,7 +35,7 @@ from urllib.parse import quote
 
 import httpx
 import yaml
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -976,6 +977,10 @@ class TalkApp:
         images_dir = _resolve_path(ditto_cfg.get("images_dir") or "ditto/example/images", base)
         return ditto_dir, python, trt, images_dir
 
+    def _ditto_stream_path(self, sid):
+        ditto_dir, _, _, _ = self._ditto_paths()
+        return os.path.join(ditto_dir, "server_output", sid + ".mp4.tmp.mp4")
+
     def _start_ditto(self):
         """Spawn the DITTO avatar server as a subprocess (its own TensorRT venv)."""
         ditto_cfg = self.config.get("ditto", {}) or {}
@@ -986,11 +991,14 @@ class TalkApp:
         env["HEAD_MOTION_ALPHA"] = str(ditto_cfg.get("head_motion_alpha", 1.25))
         try:
             log_event("info", "starting DITTO avatar server")
-            self._ditto_proc = subprocess.Popen(
-                [venv_python, "ditto_server.py"],
-                cwd=ditto_dir, env=env,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
+            ditto_log = os.path.join(ROOT, "ditto_server.log")
+            ditto_err = os.path.join(ROOT, "ditto_server.err")
+            with open(ditto_log, "ab") as log_f, open(ditto_err, "ab") as err_f:
+                self._ditto_proc = subprocess.Popen(
+                    [venv_python, "ditto_server.py"],
+                    cwd=ditto_dir, env=env,
+                    stdout=log_f, stderr=err_f,
+                )
         except Exception as e:  # noqa: BLE001
             self._ditto_proc = None
             log_event("error", f"DITTO server failed to start: {type(e).__name__}: {e}")
@@ -1806,6 +1814,8 @@ class TalkApp:
                         if saved:
                             st["video_url"] = saved
                     st["_audio_done"] = True
+                    if turn.get("sentences"):
+                        turn["sentences"][-1]["video_url"] = st["video_url"]
                 else:
                     turn["mode"] = "chunked"
                     turn["stream"] = None
@@ -2078,6 +2088,40 @@ def create_app(config: dict) -> FastAPI:
         if r.status_code not in (200, 206):
             raise HTTPException(404, "video not ready")
         return Response(content=r.content, media_type="video/mp4")
+
+    @app.websocket("/api/stream/ws/{turn_id}")
+    async def stream_ws(websocket: WebSocket, turn_id: str):
+        await websocket.accept()
+        a = app.state.app
+        turn = a.turns.get(turn_id)
+        st = (turn or {}).get("stream") or {}
+        sid = st.get("sid", "")
+        if not sid:
+            await websocket.send_text("ERROR:no-stream")
+            await websocket.close()
+            return
+        path = a._ditto_stream_path(sid)
+        sent = 0
+        started = False
+        while True:
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                size = 0
+            if size > sent:
+                with open(path, "rb") as f:
+                    f.seek(sent)
+                    chunk = f.read(size - sent)
+                sent = size
+                if not started:
+                    started = True
+                    await websocket.send_text("START")
+                await websocket.send_bytes(chunk)
+            if st.get("_audio_done") and sent >= size:
+                await websocket.send_text("END")
+                break
+            await asyncio.sleep(0.1)
+        await websocket.close()
 
     @app.get("/api/stream/audio/{turn_id}")
     def stream_audio(turn_id: str):
