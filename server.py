@@ -720,6 +720,12 @@ class TalkApp:
         self.profiles_file = os.path.join(ROOT, "profiles.json")
         self.profiles = self._load_profiles()
 
+        # HF Hub auth: use the token from config so HF downloads are authenticated
+        # (avoids the "unauthenticated requests" warning; enables gated/private models).
+        hf_tok = ((config.get("huggingface", {}) or {}).get("token") or "").strip()
+        if hf_tok:
+            os.environ.setdefault("HF_TOKEN", hf_tok)
+
         emb_cfg = config.get("memory", {}).get("embedding", {})
         self.embedder = Embedder(
             model_name=emb_cfg.get("model_name", "Qwen/Qwen3-Embedding-0.6B"),
