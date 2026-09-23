@@ -726,6 +726,9 @@ class TalkApp:
         if hf_tok:
             os.environ.setdefault("HF_TOKEN", hf_tok)
 
+        # keep the DITTO engine dir populated from static/avatars (the source of truth)
+        self._sync_avatars_to_ditto()
+
         emb_cfg = config.get("memory", {}).get("embedding", {})
         self.embedder = Embedder(
             model_name=emb_cfg.get("model_name", "Qwen/Qwen3-Embedding-0.6B"),
@@ -1197,13 +1200,38 @@ class TalkApp:
         os.makedirs(d, exist_ok=True)
         return d
 
+    def _sync_avatars_to_ditto(self):
+        """Mirror static/avatars images into the DITTO engine dir, which is where DITTO
+        resolves avatar images from. static/avatars stays the source of truth; this only
+        adds missing files (never deletes) so DITTO can render every listed avatar."""
+        try:
+            src = self._static_avatars_dir()
+            dst = self._avatars_dir()
+            if not os.path.isdir(src):
+                return
+            os.makedirs(dst, exist_ok=True)
+            for fn in os.listdir(src):
+                if os.path.splitext(fn)[1].lower() not in (".png", ".jpg", ".jpeg"):
+                    continue
+                if os.path.splitext(fn)[0].lower() == "default":
+                    continue
+                s = os.path.join(src, fn)
+                d = os.path.join(dst, fn)
+                if os.path.isfile(s) and not os.path.exists(d):
+                    shutil.copy(s, d)
+        except Exception:
+            pass
+
     def _avatars(self):
-        img_dir = self._avatars_dir()
+        # static/avatars is the source of truth for the avatar list (the frontend serves
+        # images from /static/avatars). DITTO renders from its own example/images dir, which
+        # _sync_avatars_to_ditto() keeps mirrored.
+        img_dir = self._static_avatars_dir()
         avatars = []
         if os.path.isdir(img_dir):
             for fn in sorted(os.listdir(img_dir)):
                 stem, ext = os.path.splitext(fn)
-                if ext.lower() in (".png", ".jpg", ".jpeg"):
+                if ext.lower() in (".png", ".jpg", ".jpeg") and stem.lower() != "default":
                     avatars.append({"id": stem, "image": fn})
         return avatars
 
@@ -1234,7 +1262,7 @@ class TalkApp:
         settings = self._avatar_settings(stem)
         alpha = settings["idle_motion_alpha"]
         length = settings["idle_length"]
-        img_path = os.path.join(self._avatars_dir(), image_name)
+        img_path = os.path.join(self._static_avatars_dir(), image_name)
         out_path = os.path.join(ditto_dir, "idle_videos_15", stem + ".mp4")
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         env = dict(os.environ)
@@ -2577,7 +2605,7 @@ def create_app(config: dict) -> FastAPI:
             ext = os.path.splitext(image.filename or "avatar.png")[1].lower()
             if ext not in (".png", ".jpg", ".jpeg"):
                 ext = ".png"
-            img_dir = a._avatars_dir()
+            img_dir = a._static_avatars_dir()
             os.makedirs(img_dir, exist_ok=True)
             used = {os.path.splitext(f)[0] for f in os.listdir(img_dir) if os.path.splitext(f)[1].lower() in (".png", ".jpg", ".jpeg")}
             nid = 1
@@ -2586,7 +2614,9 @@ def create_app(config: dict) -> FastAPI:
             fn = f"{nid}{ext}"
             with open(os.path.join(img_dir, fn), "wb") as f:
                 f.write(data)
-            shutil.copy(os.path.join(img_dir, fn), os.path.join(a._static_avatars_dir(), fn))
+            ditto_img_dir = a._avatars_dir()
+            os.makedirs(ditto_img_dir, exist_ok=True)
+            shutil.copy(os.path.join(img_dir, fn), os.path.join(ditto_img_dir, fn))
             # store per-avatar settings
             if head_motion_alpha.strip() or idle_motion_alpha.strip() or idle_length.strip() or name.strip():
                 settings = a._load_avatar_settings()
@@ -3445,7 +3475,7 @@ def create_app(config: dict) -> FastAPI:
             raise HTTPException(400, "invalid id")
         img = None
         for ext in (".png", ".jpg", ".jpeg"):
-            p = os.path.join(a._avatars_dir(), stem + ext)
+            p = os.path.join(a._static_avatars_dir(), stem + ext)
             if os.path.isfile(p):
                 img = stem + ext
                 break
@@ -3492,7 +3522,8 @@ def create_app(config: dict) -> FastAPI:
             ext = os.path.splitext(image.filename or "avatar.png")[1].lower()
             if ext not in (".png", ".jpg", ".jpeg"):
                 ext = ".png"
-            img_dir = a._avatars_dir()
+            img_dir = a._static_avatars_dir()
+            os.makedirs(img_dir, exist_ok=True)
             for e in (".png", ".jpg", ".jpeg"):
                 if e != ext:
                     old = os.path.join(img_dir, stem + e)
@@ -3501,7 +3532,9 @@ def create_app(config: dict) -> FastAPI:
             fn = stem + ext
             with open(os.path.join(img_dir, fn), "wb") as f:
                 f.write(data)
-            shutil.copy(os.path.join(img_dir, fn), os.path.join(a._static_avatars_dir(), fn))
+            ditto_img_dir = a._avatars_dir()
+            os.makedirs(ditto_img_dir, exist_ok=True)
+            shutil.copy(os.path.join(img_dir, fn), os.path.join(ditto_img_dir, fn))
             threading.Thread(target=a._gen_idle, args=(fn,), daemon=True).start()
         return {"ok": True}
 
