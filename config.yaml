@@ -12,6 +12,8 @@ ditto:
   enabled: true
   images_dir: ditto/example/images
   python: ditto/venv/Scripts/python.exe
+  sampling_timesteps: 50
+  stream_playback_buffer: 1.0
   tensorrt_lib: ../TensorRT/TensorRT-8.6.1.6/lib
 ffmpeg: ''
 history:
@@ -33,6 +35,31 @@ llm:
     temperature: 0.7
     max_tokens: 8192
     thinking: false
+  - name: Small
+    base_url: http://192.168.1.223:7777/v1
+    model: qwen/qwen3-1.7b
+    context_tokens: 32000
+    max_history_tokens: 24000
+    temperature: 0.7
+    max_tokens: 8192
+    thinking: false
+  - name: 27B
+    base_url: http://192.168.1.208:7777/v1
+    model: unsloth/yvette
+    context_tokens: 32000
+    max_history_tokens: 24000
+    temperature: 0.7
+    max_tokens: 8192
+    thinking: false
+  - name: e4b
+    base_url: http://192.168.1.223:7777/v1
+    model: gemma-4-e4b-it-qat
+    context_tokens: 32000
+    max_history_tokens: 24000
+    temperature: 0.7
+    max_tokens: 8192
+    thinking: false
+    api_token: ""
   temperature: 0.7
 logs:
   retention_hours: 48.0
@@ -57,6 +84,8 @@ models:
     port: 8137
     python: breeze/venv/Scripts/python.exe
     repo_dir: breeze
+    default_voice_id: v_1789917885_8aaccb
+    default_instruction_id: v_1789855195_868e77
   kokoro:
     auto_start: false
     default_voice: bf_isabella
@@ -71,6 +100,7 @@ models:
     rms: 0.01
     server_script: lux/lux_server.py
     t_shift: 0.9
+    default_voice_id: v_1789918713_a71ac3
   omnivoice:
     auto_start: true
     class_temperature: 1.0
@@ -82,6 +112,8 @@ models:
     port: 8139
     python: omnivoice/venv/Scripts/python.exe
     server_script: omnivoice/omnivoice_server.py
+    default_voice_id: v_1789917885_8aaccb
+    default_instruction_id: v_1789909191_a8fb8d
   unload_idle_minutes: 60
 paths:
   base: engines
