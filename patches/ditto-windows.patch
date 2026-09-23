@@ -75,3 +75,201 @@ index 0000000..fe80713
 +            except Exception:
 +                pass
 +            self.proc.wait()
+diff --git a/core/atomic_components/writer.py b/core/atomic_components/writer.py
+index 4c075b5..78d7c07 100644
+--- a/core/atomic_components/writer.py
++++ b/core/atomic_components/writer.py
+@@ -9,7 +9,10 @@ class VideoWriterByImageIO:
+         quality = kwargs.get("quality")  # video quality
+         pixelformat = kwargs.get("pixelformat", "yuv420p")  # video pixel format
+         macro_block_size = kwargs.get("macro_block_size", 2)
+-        ffmpeg_params = ["-crf", str(kwargs.get("crf", 18))]
++        output_params = ["-crf", str(kwargs.get("crf", 18)), "-g", str(kwargs.get("gop", 25))]
++        movflags = kwargs.get("movflags")
++        if movflags:
++            output_params += ["-movflags", movflags]
+ 
+         os.makedirs(os.path.dirname(video_path), exist_ok=True)
+         
+@@ -19,7 +22,7 @@ class VideoWriterByImageIO:
+             format=video_format,
+             codec=codec,
+             quality=quality,
+-            ffmpeg_params=ffmpeg_params,
++            output_params=output_params,
+             pixelformat=pixelformat,
+             macro_block_size=macro_block_size,
+         )
+diff --git a/core/aux_models/mediapipe_landmark478.py b/core/aux_models/mediapipe_landmark478.py
+index 305545b..4d1385e 100644
+--- a/core/aux_models/mediapipe_landmark478.py
++++ b/core/aux_models/mediapipe_landmark478.py
+@@ -48,7 +48,7 @@ def bbox_to_roi(
+         return np.array([cx, cy, width, height, 0])
+     x0, y0 = rotation_keypoints[0]
+     x1, y1 = rotation_keypoints[1]
+-    angle = -np.atan2(y0 - y1, x1 - x0)
++    angle = -np.arctan2(y0 - y1, x1 - x0)
+     # normalise to [0, 2*PI]
+     rotation = angle - TWO_PI * np.floor((angle + PI) / TWO_PI)
+     return np.array([cx, cy, width, height, rotation])
+diff --git a/core/utils/load_model.py b/core/utils/load_model.py
+index 9cef03d..d50063c 100644
+--- a/core/utils/load_model.py
++++ b/core/utils/load_model.py
+@@ -11,7 +11,11 @@ def load_model(model_path: str, device: str = "cuda", **kwargs):
+         import onnxruntime
+ 
+         providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] if device == "cuda" else ["CPUExecutionProvider"]
+-        model = onnxruntime.InferenceSession(model_path, providers=providers)
++        so = onnxruntime.SessionOptions()
++        plugin = os.path.join(os.path.dirname(os.path.abspath(model_path)), "grid_sample_3d_plugin.dll")
++        if os.path.exists(plugin):
++            so.register_custom_ops_library(plugin)
++        model = onnxruntime.InferenceSession(model_path, sess_options=so, providers=providers)
+         return model, "onnx"
+ 
+     elif model_path.endswith(".engine") or model_path.endswith(".trt"):
+diff --git a/stream_pipeline_online.py b/stream_pipeline_online.py
+index 0fbfd75..fe477a8 100644
+--- a/stream_pipeline_online.py
++++ b/stream_pipeline_online.py
+@@ -1,5 +1,6 @@
+ import threading
+ import queue
++import time
+ import numpy as np
+ import traceback
+ from tqdm import tqdm
+@@ -11,7 +12,7 @@ from core.atomic_components.motion_stitch import MotionStitch
+ from core.atomic_components.warp_f3d import WarpF3D
+ from core.atomic_components.decode_f3d import DecodeF3D
+ from core.atomic_components.putback import PutBack
+-from core.atomic_components.writer import VideoWriterByImageIO
++from core.atomic_components.video_audio_writer import VideoAudioWriter
+ from core.atomic_components.wav2feat import Wav2Feat
+ from core.atomic_components.cfg import parse_cfg, print_cfg
+ 
+@@ -124,6 +125,7 @@ class StreamSDK:
+         self.fix_kp_cond = kwargs.get("fix_kp_cond", 0)
+         self.fix_kp_cond_dim = kwargs.get("fix_kp_cond_dim", None)  # [ds,de]
+         self.sampling_timesteps = kwargs.get("sampling_timesteps", 50)
++        self.movflags = kwargs.get("movflags")
+         self.online_mode = kwargs.get("online_mode", False)
+         self.v_min_max_for_clip = kwargs.get('v_min_max_for_clip', None)
+         self.smo_k_d = kwargs.get("smo_k_d", 3)
+@@ -167,12 +169,14 @@ class StreamSDK:
+             "crop_flag_do_rot": self.crop_flag_do_rot,
+         }
+         n_frames = self.template_n_frames if self.template_n_frames > 0 else self.N_d
+-        source_info = self.avatar_registrar(
+-            source_path, 
+-            max_dim=self.max_size, 
+-            n_frames=n_frames, 
+-            **crop_kwargs,
+-        )
++        source_info = kwargs.get("source_info", None)
++        if source_info is None:
++            source_info = self.avatar_registrar(
++                source_path,
++                max_dim=self.max_size,
++                n_frames=n_frames,
++                **crop_kwargs,
++            )
+ 
+         if len(source_info["x_s_info_lst"]) > 1 and self.smo_k_s > 1:
+             source_info["x_s_info_lst"] = smooth_x_s_info_lst(source_info["x_s_info_lst"], smo_k=self.smo_k_s)
+@@ -219,7 +223,7 @@ class StreamSDK:
+         # ======== Video Writer ========
+         self.output_path = output_path
+         self.tmp_output_path = output_path + ".tmp.mp4"
+-        self.writer = VideoWriterByImageIO(self.tmp_output_path)
++        self.writer = VideoAudioWriter(self.tmp_output_path, self.tmp_output_path + ".audio.raw", movflags=self.movflags)
+         self.writer_pbar = tqdm(desc="writer")
+ 
+         # ======== Audio Feat Buffer ========
+@@ -237,6 +241,7 @@ class StreamSDK:
+ 
+         self.worker_exception = None
+         self.stop_event = threading.Event()
++        self._finalized = False
+ 
+         self.audio2motion_queue = queue.Queue(maxsize=QUEUE_MAX_SIZE)
+         self.motion_stitch_queue = queue.Queue(maxsize=QUEUE_MAX_SIZE)
+@@ -254,6 +259,7 @@ class StreamSDK:
+             threading.Thread(target=self.writer_worker),
+         ]
+ 
++        self._t0 = time.time()
+         for thread in self.thread_list:
+             thread.start()
+ 
+@@ -277,6 +283,7 @@ class StreamSDK:
+             self.stop_event.set()
+ 
+     def _writer_worker(self):
++        _first = True
+         while not self.stop_event.is_set():
+             try:
+                 item = self.writer_queue.get(timeout=1)
+@@ -288,6 +295,9 @@ class StreamSDK:
+             res_frame_rgb = item
+             self.writer(res_frame_rgb, fmt="rgb")
+             self.writer_pbar.update()
++            if _first:
++                _first = False
++                print(f"[ditto] first frame at {time.time()-self._t0:.2f}s after setup", flush=True)
+ 
+     def putback_worker(self):
+         try:
+@@ -393,7 +403,7 @@ class StreamSDK:
+         
+         global_idx = 0   # frame idx, for template
+         local_idx = 0    # for cur audio_feat
+-        gen_frame_idx = 0
++        self.gen_frame_idx = 0
+         while not self.stop_event.is_set():
+             try:
+                 item = self.audio2motion_queue.get(timeout=1)    # audio feat
+@@ -443,8 +453,8 @@ class StreamSDK:
+                     x_d_info_list = self.audio2motion.cvt_fmt(valid_res_kp_seq)
+ 
+                     for x_d_info in x_d_info_list:
+-                        frame_idx = _mirror_index(gen_frame_idx, self.source_info_frames)
+-                        ctrl_kwargs = self._get_ctrl_info(gen_frame_idx)
++                        frame_idx = _mirror_index(self.gen_frame_idx, self.source_info_frames)
++                        ctrl_kwargs = self._get_ctrl_info(self.gen_frame_idx)
+ 
+                         while not self.stop_event.is_set():
+                             try:
+@@ -453,7 +463,7 @@ class StreamSDK:
+                             except queue.Full:
+                                 continue
+ 
+-                        gen_frame_idx += 1
++                        self.gen_frame_idx += 1
+ 
+                     res_kp_seq_valid_start += real_valid_len
+                 
+@@ -480,9 +490,20 @@ class StreamSDK:
+         
+         self.motion_stitch_queue.put(None)
+ 
++    def finalize(self):
++        # Signal end-of-audio so the online pipeline emits the tail (final clip)
++        # immediately, without waiting for close()/stream-end.
++        if getattr(self, "_finalized", False):
++            return
++        self._finalized = True
++        try:
++            self.audio2motion_queue.put(None, timeout=1)
++        except Exception:
++            pass
++
+     def close(self):
+         # flush frames
+-        self.audio2motion_queue.put(None)
++        self.finalize()
+         # Wait for worker threads to finish
+         for thread in self.thread_list:
+             thread.join()
