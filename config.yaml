@@ -12,7 +12,7 @@ ditto:
   enabled: true
   images_dir: ditto/example/images
   python: ditto/venv/Scripts/python.exe
-  sampling_timesteps: 50
+  sampling_timesteps: 30
   stream_playback_buffer: 1.0
   tensorrt_lib: ../TensorRT/TensorRT-8.6.1.6/lib
 ffmpeg: ''
