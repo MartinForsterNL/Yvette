@@ -65,12 +65,10 @@ A full walkthrough - the talking avatar, voice cloning, and a tight 8 GB setup.
 - About 60 GB of free disk space
 - An external LLM server (LM Studio, Ollama, llama.cpp, vLLM, etc.) running a
   chat model, exposed over an OpenAI-compatible API.
-- Optional: the Higgs TTS 3 engine (voice cloning), which needs ~3.5 GB of VRAM
-  at the default q4_k quant (~4.5 GB at q6_k, ~5.7 GB at q8_0) and ~2.8 GB of
-  disk for the q4_k weights (~4 GB for q6_k, ~5.1 GB for q8_0). Building it from
-  source also needs the Visual Studio C++ build tools and adds ~12 minutes to the
-  install; set $HIGGS_BINARY_URL in install-config.ps1 to use a prebuilt archive
-  instead.
+- Optional: the Higgs TTS 3 engine (voice cloning), ~3.5 GB of VRAM and ~2.8 GB of disk.
+  It installs from a prebuilt CUDA runtime that the installer downloads, so no compiler is
+  needed. Clearing `$HIGGS_BINARY_URL` in install-config.ps1 falls back to building it from
+  source, which needs the Visual Studio C++ build tools and adds about 12 minutes.
 
 10 - 12 GB works pretty nicely but 24 GB VRAM is recommended to get the best quality.
 This includes the LLM server. Yvette Voice Avatar AI itself can run in about 6 - 7 GB of VRAM, and the LLM runs on top of that.
