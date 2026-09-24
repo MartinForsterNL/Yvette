@@ -129,7 +129,7 @@ server:
   video_ttl_hours: 48
 stt:
   beam_size: 8
-  compute_type: float16
+  compute_type: int8
   device: cuda
   enabled: true
   language: null
