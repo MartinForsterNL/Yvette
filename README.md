@@ -21,6 +21,9 @@ A full walkthrough - the talking avatar, voice cloning, and a tight 8 GB setup.
 - **A face that talks back** - an animated avatar moves its lips in sync with
   what it says, and breathes gently between replies. You can turn this off if
   you only want the voice.
+- **Speaks as it renders** - the avatar video streams live while it is still being
+  generated, so she starts talking before the whole reply is finished. If the machine
+  cannot keep up, it waits and plays the finished clip instead of stuttering.
 - **Pick a voice** - choose from built-in voices, or make your own: clone a
   voice from a short audio sample, or describe the voice you want in plain text.
 - **It remembers** - it keeps notes on what you tell it, so it can pick up where
@@ -124,7 +127,9 @@ Everything is configured from the admin UI (http://localhost:8900/admin):
 - **Generate avatar video** - on: render the talking head; off: fast audio-only
 - **Show idle avatar** - the background "breathing" loop
 - **Bubble / text opacity** - transparency of the chat overlay
-- **Mode** - chunked (stream per sentence) or full
+- **Mode** - streaming (live, one continuous clip), chunked (one clip per sentence) or full
+- **Minimum generation FPS** - if DITTO renders slower than this, the reply waits for the
+  finished clip instead of streaming live (0 = always stream)
 - **Model** - the LLM (any OpenAI-compatible endpoint, set in the LLMs tab)
 - **TTS engine** - breeze / omnivoice / LuxTTS / kokoro
 
