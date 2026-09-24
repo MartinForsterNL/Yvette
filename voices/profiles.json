@@ -42,7 +42,8 @@
     "kind": "clone",
     "model": "lux",
     "engines": [
-      "lux"
+      "lux",
+      "higgs"
     ],
     "ref_audio": "voices\\ref_audio\\v_1789918713_a71ac3.wav",
     "transcript": "Let me know when you are ready to hear my voice or need any assistance.",
