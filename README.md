@@ -151,9 +151,10 @@ included** and are governed by their own licenses:
 - **Higgs TTS 3** (Boson AI's `bosonai/higgs-tts-3-4b`, GGUF quants from
   `NeemaShioSe/HiggsTTS3.gguf`): research / non-commercial only (Higgs Audio v3
   Research and Non-Commercial License). The app ships neither the weights nor the
-  C++ port: install.ps1 builds the port from its pinned upstream source at install
-  time, or unpacks a prebuilt archive you supply.
-- **DITTO**, **OmniVoice**, **LuxTTS**, **Whisper**, **Kokoro**: see each upstream repo
+  port's source: the installer unpacks a prebuilt archive of the port, or builds it
+  from pinned upstream source if that URL is cleared.
+- **HiggsTTS.cpp** (https://github.com/Rafa00127/HiggsTTS.cpp): see upstream repo
+- **DITTO**, **OmniVoice**, **LuxTTS**, **Whisper**, **Kokoro**: see upstream repo
 - **NVIDIA TensorRT**: proprietary, download separately from NVIDIA - not redistributable
 
 Download model weights at setup time; do not redistribute them commercially.

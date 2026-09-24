@@ -263,9 +263,9 @@ The SSL cert is created on demand - it is never shipped.
   DITTO conversion step.
 - Model weights are downloaded at install time and are governed by their own
   licenses. Breeze TTS 2 and Higgs TTS 3 (Boson AI) are research /
-  non-commercial only. See each upstream repo for the others. The Higgs C++ port
-  is built from its pinned upstream source during install rather than bundled
-  here (or unpacked from a prebuilt archive you supply via $HIGGS_BINARY_URL).
+  non-commercial only. See upstream repo for the others - the Higgs C++ port is
+  https://github.com/Rafa00127/HiggsTTS.cpp. It installs from a prebuilt archive by
+  default, or is built from pinned upstream source when that URL is cleared.
 - TensorRT and cuDNN are proprietary NVIDIA software. They are not bundled here
   and must be downloaded from NVIDIA.
 - DITTO's upstream README installs it with conda, but this project installs it in
