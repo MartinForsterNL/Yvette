@@ -113,9 +113,9 @@ of where the project lives.
 
 Do not rename the inner folder. The script looks for TensorRT-8.6.1.6.
 
-### 7. Visual Studio C++ build tools (optional - only for the Higgs TTS 3 engine)
+### 7. Visual Studio C++ build tools (optional - only if the Higgs TTS 3 engine is built from source)
 
-The optional Higgs TTS 3 engine is a C++ CUDA build, so the installer needs MSVC.
+The optional Higgs TTS 3 engine normally installs from a prebuilt CUDA runtime that the installer downloads, so MSVC is NOT needed for a normal install. It is only required if you clear `$HIGGS_BINARY_URL`, which makes the installer clone and build the C++ server from source instead.
 Install the "Build Tools for Visual Studio" (or Visual Studio Community) with the
 "Desktop development with C++" workload. install.ps1 detects it with vswhere; if
 it is missing, the Higgs engine is skipped with a warning and everything else
@@ -171,11 +171,11 @@ It will:
    cvt_onnx_to_trt.py. This is why the TensorRT and cuDNN steps in Part 1 are
    required: the conversion needs them.
 8. Copy this project's wrapper servers (servers/) into each backend folder.
-9. Install the optional Higgs TTS 3 engine: clone the pinned HiggsTTS.cpp and
-   build its CUDA server (~12 minutes, needs the MSVC C++ build tools from Part 1
-   step 7), then download the default q4_k GGUF (~2.8 GB). Set $SKIP_HIGGS =
-   $true in install-config.ps1 to leave it out, or set $HIGGS_BINARY_URL to a
-   prebuilt zip to skip the build.
+9. Install the optional Higgs TTS 3 engine: download the prebuilt CUDA runtime (no compiler,
+no build), then fetch the default q4_k GGUF (~2.8 GB). Set `$SKIP_HIGGS = $true` in
+install-config.ps1 to leave it out entirely. If you clear `$HIGGS_BINARY_URL`, it falls back
+to cloning the pinned HiggsTTS.cpp and building its CUDA server (~12 minutes), which does need
+the MSVC build tools from step 7.
 10. Create the app venv and install its Python dependencies (requirements.txt).
 11. Generate a random api_token and write your HF token into config.yaml.
 12. Pre-download the internal models (Whisper, Kokoro, embeddings).
