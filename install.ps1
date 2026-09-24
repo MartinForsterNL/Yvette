@@ -74,8 +74,8 @@ $dPy = Join-Path $dVenv "Scripts\python.exe"
 & $dPy -m pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 & $dPy -m pip install numpy==2.0.1 opencv-python-headless==4.10.0.84 librosa==0.10.2.post1 soundfile==0.13.0 soxr==0.5.0.post1 numba==0.60.0 tqdm filetype scikit-image
 & $dPy -m pip install cuda-python==12.6.2.post1 nvidia-cublas-cu12==12.6.4.1 nvidia-cuda-runtime-cu12==12.1.105 nvidia-cudnn-cu12==9.6.0.74
-& $dPy -m pip install onnx onnxruntime tifffile==2024.12.12 imageio==2.36.1 imageio-ffmpeg==0.5.1 pooch==1.8.2
-& $dPy -m pip install polygraphy colored "triton-windows<3.2"
+& $dPy -m pip install onnx==1.23.0 onnxruntime==1.23.2 tifffile==2024.12.12 imageio==2.36.1 imageio-ffmpeg==0.5.1 pooch==1.8.2
+& $dPy -m pip install polygraphy==0.53.4 colored "triton-windows<3.2"
 & $dPy -m pip install fastapi uvicorn python-multipart cython
 
 # TensorRT python bindings from the SDK (the only reliable source for 8.6.1.6), matching Python 3.10
@@ -87,18 +87,24 @@ if ($trtWhl) {
 }
 Ok "ditto python deps installed"
 
-# Apply our 2-file patch
+# Apply our DITTO patch. Must be idempotent: a re-run (patch already applied) has to
+# skip cleanly, not abort the whole install. Native stderr + $ErrorActionPreference=Stop is
+# why the old version blew up here, so errors are relaxed around the git calls.
 $patch = Join-Path $Patches "ditto-windows.patch"
 if (Test-Path $patch) {
-    pushd $ditto
-    git apply --check $patch *> $null
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    & git -C $ditto apply --check $patch 2>&1 | Out-Null
     if ($LASTEXITCODE -eq 0) {
-        git apply $patch
-        Ok "ditto patch applied"
+        & git -C $ditto apply $patch 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { Ok "ditto patch applied" } else { Die "ditto patch failed to apply" }
     } else {
-        Warn "ditto patch already applied or does not match this checkout"
+        # Not applicable forward: either already applied, or this checkout differs. Neither is
+        # fatal on a re-run - warn and carry on. (The old version never reached this branch:
+        # the git stderr above aborted the script under $ErrorActionPreference=Stop.)
+        Warn "ditto patch already applied or does not match this checkout - skipping"
     }
-    popd
+    $ErrorActionPreference = $prevEap
 }
 
 # Checkpoints (ONNX models + configs + plugin)
