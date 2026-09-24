@@ -1,11 +1,5 @@
 # Changelog - Yvette Voice Avatar AI
 
-Versioning: **a version is cut when it is pushed.** v0.1 = `4730bc9`. v0.2 = `ef5878e`
-(published 2026-09-24). The next iteration starts a new section below.
-
-Keep this file brief: **major changes only, one line each.** It is a human summary, not a commit
-log - `git log` holds the detail.
-
 ## v0.2 - 2026-09-24
 
 - TalkUI: live streaming over a WebSocket with serial chunk queueing (fixes early video cut-off).
