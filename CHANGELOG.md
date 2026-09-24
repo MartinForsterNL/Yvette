@@ -1,5 +1,10 @@
 # Changelog - Yvette Voice Avatar AI
 
+## v0.3 - unreleased
+
+- Streaming: playback starts only once DITTO's generation FPS clears a configurable minimum
+  (default 30, averaged over the last 10 samples), then plays through - no bail-out.
+
 ## v0.2 - 2026-09-24
 
 - TalkUI: live streaming over a WebSocket with serial chunk queueing (fixes early video cut-off).

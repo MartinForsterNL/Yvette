@@ -1077,16 +1077,21 @@ class TalkApp:
         return ""
 
     def _ditto_stream_audio(self, sid, audio_path):
+        """Feed one TTS chunk into the DITTO stream. Returns DITTO's cumulative generated
+        frame index, which is what the generation-FPS measurement is built from."""
         ditto_cfg = self.config.get("ditto", {}) or {}
         base = (ditto_cfg.get("base_url") or "").rstrip("/")
         if not base or not sid or not os.path.exists(audio_path):
-            return
+            return 0
         try:
             with open(audio_path, "rb") as f:
                 files = {"audio": (os.path.basename(audio_path), f, "audio/ogg")}
-                httpx.post(base + f"/api/stream/{sid}/audio", files=files, timeout=30)
+                r = httpx.post(base + f"/api/stream/{sid}/audio", files=files, timeout=30)
+                if r.status_code == 200:
+                    return int((r.json() or {}).get("frames") or 0)
         except Exception as e:
             log_event("error", f"DITTO stream audio failed: {type(e).__name__}: {e}")
+        return 0
 
     def _ditto_stream_end(self, sid):
         ditto_cfg = self.config.get("ditto", {}) or {}
@@ -1294,6 +1299,49 @@ class TalkApp:
         finally:
             with self._idle_state_lock:
                 self._idle_generating.discard(stem)
+
+    def _stream_fps_sampler(self, turn, sid, min_fps):
+        """Measure how fast DITTO is producing video, independently of the chunk feeding.
+        Samples the growing stream file every 0.2s: ffprobe gives the duration so far and
+        frames = duration * 25. The rate is the average of the last N samples (no lifetime
+        average, and never decided on fewer than N), which is what gates the start."""
+        st = turn.get("stream") or {}
+        path = self._ditto_stream_path(sid)
+        t0 = time.time()
+        samples = []
+        rates = []          # recent per-sample rates; the last N are averaged for the decision
+        n_avg = max(1, int(float((self.config.get("ditto", {}) or {}).get("fps_sample_count", 10) or 10)))
+        while not st.get("_audio_done"):
+            dur = 0.0
+            try:
+                out = subprocess.run(
+                    ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", path],
+                    capture_output=True, text=True, timeout=15)
+                dur = float((out.stdout or "").strip() or 0)
+            except Exception:
+                dur = 0.0
+            if dur > 0:
+                frames = int(round(dur * 25))
+                now = time.time()
+                elapsed = now - t0
+                # Per-sample rate, averaged over the last N samples so a single spike cannot
+                # decide the start (and never an average of fewer than N).
+                prev = samples[-1] if samples else None
+                samples.append((now, frames))
+                if prev and now - prev[0] > 0.05:
+                    rates.append((frames - prev[1]) / (now - prev[0]))
+                    rates = rates[-n_avg:]
+                    # Require a full set of N samples: never decide on an "average" of 1.
+                    if len(rates) >= n_avg:
+                        avg = sum(rates) / len(rates)
+                        st["fps"] = round(avg, 1)
+                        st["fps_samples"] = len(rates)
+                        if elapsed >= 3.0:
+                            # Once fast enough we go live and STAY live - there is no bailout any more.
+                            if min_fps <= 0 or avg >= min_fps:
+                                st["live"] = True
+            time.sleep(0.2)
 
     def _cleanup_media(self):
         """Delete audio + avatar-video files older than their configured TTL."""
@@ -1841,7 +1889,13 @@ class TalkApp:
                         sid = self._ditto_stream_start(avatar, hm, sts, est_frames) or None
                 if sid:
                     buffer_s = float((self.config.get("ditto", {}) or {}).get("stream_playback_buffer", 1.0) or 1.0)
-                    turn["stream"] = {"sid": sid, "video_url": f"/api/stream/video/{turn_id}", "audio_url": "", "buffer": buffer_s, "_audio_done": False}
+                    # Generation throughput: DITTO reports a cumulative frame index per chunk, so the
+                    # average FPS = frames / wall seconds. Below min_generation_fps this turn stops being
+                    # "live" and TalkUI waits for the finished video rather than streaming it (a machine
+                    # that cannot keep up would otherwise stutter).
+                    min_fps = float((self.config.get("ditto", {}) or {}).get("min_generation_fps", 30) or 0)
+                    turn["stream"] = {"sid": sid, "video_url": f"/api/stream/video/{turn_id}", "audio_url": "", "buffer": buffer_s, "_audio_done": False, "fps": 0.0, "min_fps": min_fps, "live": min_fps <= 0}   # 0 = no minimum set, start straight away
+                    threading.Thread(target=self._stream_fps_sampler, args=(turn, sid, min_fps), daemon=True).start()
                     for c in chunk_text(final_answer, self.max_chunk_chars, self.min_chunk_chars):
                         idx = len(turn["sentences"])
                         audio_url = None
@@ -3432,12 +3486,16 @@ def create_app(config: dict) -> FastAPI:
         return {
             "sampling_timesteps": int(d.get("sampling_timesteps", 40) or 40),
             "stream_playback_buffer": float(d.get("stream_playback_buffer", 1.0) or 1.0),
+            "min_generation_fps": float(d.get("min_generation_fps", 30) or 0),
+            "fps_sample_count": int(d.get("fps_sample_count", 10) or 10),
         }
 
     @app.post("/api/ditto/settings")
     async def save_ditto_settings(
         sampling_timesteps: str = Form(""),
         stream_playback_buffer: str = Form(""),
+        min_generation_fps: str = Form(""),
+        fps_sample_count: str = Form(""),
     ):
         a = app.state.app
         d = a.config.setdefault("ditto", {})
@@ -3446,6 +3504,10 @@ def create_app(config: dict) -> FastAPI:
                 d["sampling_timesteps"] = int(sampling_timesteps)
             if stream_playback_buffer.strip():
                 d["stream_playback_buffer"] = float(stream_playback_buffer)
+            if min_generation_fps.strip():
+                d["min_generation_fps"] = float(min_generation_fps)
+            if fps_sample_count.strip():
+                d["fps_sample_count"] = int(fps_sample_count)
         except ValueError:
             raise HTTPException(400, "invalid numeric value")
         _save_config(a.config)

@@ -374,6 +374,14 @@
             <label>Stream playback buffer (s) <span class="hint">seconds of video to buffer before playback starts</span></label>
             <input type="number" id="ditto-stream-buffer" min="0.5" max="60" step="0.5">
           </div>
+            <div class="field">
+              <label>Minimum generation FPS <span class="hint">if DITTO renders slower than this, wait for the full video instead of streaming live (0 = always stream)</span></label>
+              <input type="number" id="ditto-min-fps" min="0" max="30" step="1">
+            </div>
+            <div class="field">
+              <label>FPS samples to average <span class="hint">how many 0.2s samples to average before deciding (4 = 0.8s window; higher = steadier)</span></label>
+              <input type="number" id="ditto-fps-samples" min="1" max="20" step="1">
+            </div>
           <div class="row actions">
             <button id="ditto-settings-save" class="primary">Save</button>
             <span id="ditto-settings-status" class="status"></span>

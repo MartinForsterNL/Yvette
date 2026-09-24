@@ -1988,6 +1988,8 @@ async function loadDittoSettings() {
     const d = await (await fetch("/api/ditto/settings")).json();
     document.getElementById("ditto-sampling-steps").value = d.sampling_timesteps;
     document.getElementById("ditto-stream-buffer").value = d.stream_playback_buffer;
+    document.getElementById("ditto-min-fps").value = d.min_generation_fps;
+    document.getElementById("ditto-fps-samples").value = d.fps_sample_count;
   } catch (e) {}
 }
 
@@ -1995,6 +1997,8 @@ document.getElementById("ditto-settings-save").onclick = async () => {
   const fd = new FormData();
   fd.append("sampling_timesteps", document.getElementById("ditto-sampling-steps").value);
   fd.append("stream_playback_buffer", document.getElementById("ditto-stream-buffer").value);
+  fd.append("min_generation_fps", document.getElementById("ditto-min-fps").value);
+  fd.append("fps_sample_count", document.getElementById("ditto-fps-samples").value);
   const st = document.getElementById("ditto-settings-status");
   st.textContent = "Saving...";
   try {

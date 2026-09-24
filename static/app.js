@@ -24,6 +24,7 @@ let mediaSequence = [];  // ordered playback items: {kind: "video"|"audio", url,
 let mediaIndex = -1;     // current playback position, -1 = stopped
 let videoPlaying = false; // whether an avatar video is currently playing
 let streamPlayed = false; // whether the streaming turn's video has been started
+let lastLoggedFps = null;   // de-dupe the console fps readout
 let preheatDone = false;  // DITTO stream preheat fired once this turn
 let player = null;       // single hidden audio element
 let profiles = {};       // profile name -> {personality, voice_id, instruction_id, mode}
@@ -59,6 +60,7 @@ function beginTurn() {
   busy = true;
   turnStreaming = true;
   streamPlayed = false;
+  lastLoggedFps = null;
   applyChatVisibility();
 }
 
@@ -652,6 +654,14 @@ async function pollTurn(turnId, userBubble) {
     if (!r.ok) throw new Error(st.detail || st.error || JSON.stringify(st));
 
     isStreaming = st.mode === "streaming";
+    // Console FPS readout, for verifying the min-generation-fps behaviour by eye.
+    if (isStreaming && st.stream) {
+      const _f = st.stream.fps || 0;
+      if (_f && _f !== lastLoggedFps) {
+        lastLoggedFps = _f;
+        console.log("[stream] fps " + _f + " (avg of " + (st.stream.fps_samples || 0) + ")  min " + (st.stream.min_fps || 0) + "  live " + (st.stream.live !== false));
+      }
+    }
 
     if (!userTextShown && st.user_text) {
       const _s = document.createElement("span");
@@ -687,7 +697,7 @@ async function pollTurn(turnId, userBubble) {
     }
     seen = sentences.length;
 
-    if (isStreaming && st.stream && st.stream.video_url && !streamPlayed) {
+    if (isStreaming && st.stream && st.stream.video_url && !streamPlayed && st.stream.live === true) {
       streamPlayed = true;
       setTalking(true);
       startStreamVideo(st.stream.video_url, st.stream.audio_url, st.stream.buffer, () => {
@@ -702,10 +712,16 @@ async function pollTurn(turnId, userBubble) {
       $("status").textContent = "Hold the button to talk";
       turnStreaming = false;
       preheatDone = false;
-      if (isStreaming && streamPlayed) {
-        if (st.stream && st.stream.video_url && lastStreamBubble) {
-          addVideoReplay(lastStreamBubble, st.stream.video_url, false, "");
-        }
+      const finishedStream = isStreaming && st.stream && st.stream.video_url;
+      if (finishedStream && lastStreamBubble) {
+        addVideoReplay(lastStreamBubble, st.stream.video_url, false, "");
+      }
+      if (finishedStream && !streamPlayed) {
+        // Never went live (generation stayed under the minimum): play the finished video now.
+        streamPlayed = true;
+        setTalking(true);
+        startVideo(st.stream.video_url, () => { setTalking(false); endTurn(); }, () => { setTalking(false); endTurn(); });
+      } else if (isStreaming && streamPlayed) {
         stopStream();
       } else if (mediaIndex === -1) {
         setTalking(false);
