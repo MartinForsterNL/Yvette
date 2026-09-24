@@ -1,12 +1,12 @@
 # Changelog - Yvette Voice Avatar AI
 
-Versioning: **v0.1 = the state published on GitHub** (commit `4730bc9`). Anything after is an
-unreleased iteration; we are on **v0.2**. A version is released only when it is pushed.
+Versioning: **a version is cut when it is pushed.** v0.1 = `4730bc9`. v0.2 = `ef5878e`
+(published 2026-09-24). The next iteration starts a new section below.
 
 Keep this file brief: **major changes only, one line each.** It is a human summary, not a commit
 log - `git log` holds the detail.
 
-## v0.2 - unreleased
+## v0.2 - 2026-09-24
 
 - TalkUI: live streaming over a WebSocket with serial chunk queueing (fixes early video cut-off).
 - DITTO server: paced ingest worker, HTTP Range on `/video`, timestamped logging.
@@ -18,6 +18,6 @@ log - `git log` holds the detail.
 - Defaults: `ditto.sampling_timesteps` 30, `stt.compute_type` int8, HF downloads use the config token.
 - Layout: `_work/` moved outside the repo so scratch never pollutes the working tree.
 
-## v0.1 - published
+## v0.1 - 2026-09-21
 
 - Baseline as published on GitHub: `4730bc9`.
