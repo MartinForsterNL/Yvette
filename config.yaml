@@ -77,6 +77,18 @@ memory:
   min_score: 0.3
   top_k: 5
 models:
+  higgs:
+    auto_start: false
+    bin: higgs/bin/higgs_server.exe
+    default_voice_id: null
+    enabled: true
+    models_dir: higgs/models
+    port: 8141
+    python: higgs/venv/Scripts/python.exe
+    quant: q4_k
+    seed: 42
+    server_script: higgs/higgs_server.py
+    temperature: 0.9
   breeze:
     auto_start: false
     default_cfg_scale: 4.0
