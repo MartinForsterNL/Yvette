@@ -578,6 +578,7 @@ async function loadVoices() {
 }
 
 function updateVoiceDropdowns(engineName) {
+  const known = !!engineCaps[engineName];
   const caps = engineCaps[engineName] || { supports_cloning: false, supports_design: false, voices: [], settings: [] };
   const isKokoro = engineName === "kokoro";
 
@@ -604,7 +605,11 @@ function updateVoiceDropdowns(engineName) {
   const noneClone = document.createElement("option");
   noneClone.value = ""; noneClone.textContent = "(no clone)";
   cloneSel.appendChild(noneClone);
-  if (caps.supports_cloning) {
+  // A voice profile is offered for every engine it is tagged for (same rule the
+  // admin uses). An engine that is enabled but not yet reported by /api/engines
+  // (e.g. higgs, whose backend is only built at server start) still gets the
+  // profiles tagged for it instead of an empty list.
+  if (caps.supports_cloning || !known) {
     for (const v of allVoices) {
       if (v.kind !== "clone" || !voiceMarkedFor(v, engineName)) continue;
       const opt = document.createElement("option");
@@ -619,7 +624,7 @@ function updateVoiceDropdowns(engineName) {
   const noneDesign = document.createElement("option");
   noneDesign.value = ""; noneDesign.textContent = "(no design)";
   designSel.appendChild(noneDesign);
-  if (caps.supports_design) {
+  if (caps.supports_design || !known) {
     for (const v of allVoices) {
       if (v.kind !== "design" || !voiceMarkedFor(v, engineName)) continue;
       const opt = document.createElement("option");
@@ -632,7 +637,7 @@ function updateVoiceDropdowns(engineName) {
   $("row-voice-preset").style.display = isKokoro ? "" : "none";
   $("row-kokoro-speed").style.display = isKokoro ? "" : "none";
   $("row-voice").style.display = !isKokoro ? "" : "none";
-  $("row-instruction").style.display = (!isKokoro && caps.supports_design) ? "" : "none";
+  $("row-instruction").style.display = (!isKokoro && designSel.options.length > 1) ? "" : "none";
 }
 
 function updateSpeedLabel() {

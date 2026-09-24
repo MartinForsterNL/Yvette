@@ -3,9 +3,10 @@
 A talking-head voice assistant: speech-to-text, chat, text-to-speech, and a
 lip-synced avatar, all behind one backend.
 
-The app (the orchestrator) ships in this repo. The heavy AI models run as four
+The app (the orchestrator) ships in this repo. The heavy AI models run as
 separate backends, each in its own Python environment so their dependency sets
-can't clash. This guide covers how to install everything.
+can't clash. One of them (Higgs TTS 3) is optional. This guide covers how to
+install everything.
 
 ## What gets installed
 
@@ -16,6 +17,7 @@ can't clash. This guide covers how to install everything.
 | Breeze     | Text-to-speech (Breeze TTS 2)    | breezeblue-ai/breeze-tts |
 | OmniVoice  | Text-to-speech (multilingual)    | k2-fsa/OmniVoice |
 | LuxTTS     | Text-to-speech (voice cloning)   | ysharma3501/LuxTTS |
+| Higgs TTS 3 | Text-to-speech (voice cloning, optional) | Rafa00127/HiggsTTS.cpp + NeemaShioSe/HiggsTTS3.gguf |
 | Whisper (STT) | Speech-to-text, in-process | large-v3-turbo |
 | Kokoro (TTS)  | Text-to-speech, in-process, CPU | bf_isabella |
 | Embeddings    | Memory embeddings, in-process | Qwen/Qwen3-Embedding-0.6B |
@@ -111,6 +113,17 @@ of where the project lives.
 
 Do not rename the inner folder. The script looks for TensorRT-8.6.1.6.
 
+### 7. Visual Studio C++ build tools (optional - only for the Higgs TTS 3 engine)
+
+The optional Higgs TTS 3 engine is a C++ CUDA build, so the installer needs MSVC.
+Install the "Build Tools for Visual Studio" (or Visual Studio Community) with the
+"Desktop development with C++" workload. install.ps1 detects it with vswhere; if
+it is missing, the Higgs engine is skipped with a warning and everything else
+installs normally. To skip the build entirely, set $HIGGS_BINARY_URL to a
+prebuilt zip in install-config.ps1.
+
+Download: https://visualstudio.microsoft.com/downloads/ (Build Tools for Visual Studio)
+
 ---
 
 ## Part 2 - Configure, then install
@@ -123,7 +136,7 @@ token at https://huggingface.co/settings/tokens and accept the Breeze model
 terms at https://huggingface.co/BreezeBlue/breeze-tts-2.
 
 The token is only needed to download the gated Breeze voice checkpoint. The
-other models (OmniVoice, LuxTTS) are public and download on first run without
+other models (OmniVoice, LuxTTS, Higgs TTS 3) are public and download without
 one.
 
 Your token is a secret. Do not commit install-config.ps1 with your token
@@ -158,9 +171,14 @@ It will:
    cvt_onnx_to_trt.py. This is why the TensorRT and cuDNN steps in Part 1 are
    required: the conversion needs them.
 8. Copy this project's wrapper servers (servers/) into each backend folder.
-9. Create the app venv and install its Python dependencies (requirements.txt).
-10. Generate a random api_token and write your HF token into config.yaml.
-11. Pre-download the internal models (Whisper, Kokoro, embeddings).
+9. Install the optional Higgs TTS 3 engine: clone the pinned HiggsTTS.cpp and
+   build its CUDA server (~12 minutes, needs the MSVC C++ build tools from Part 1
+   step 7), then download the default q4_k GGUF (~2.8 GB). Set $SKIP_HIGGS =
+   $true in install-config.ps1 to leave it out, or set $HIGGS_BINARY_URL to a
+   prebuilt zip to skip the build.
+10. Create the app venv and install its Python dependencies (requirements.txt).
+11. Generate a random api_token and write your HF token into config.yaml.
+12. Pre-download the internal models (Whisper, Kokoro, embeddings).
 
 ---
 
@@ -172,11 +190,13 @@ engines/
   breeze/         # cloned repo + venv + model checkpoint
   omnivoice/      # venv (model downloads on first run)
   lux/            # cloned repo + venv (model downloads on first run)
+  higgs/          # cloned repo + build-cu/ + bin/ + models/ + venv (optional engine)
 ```
 
-The repo's servers/ folder holds the three wrapper servers that the installer
+The repo's servers/ folder holds the wrapper servers that the installer
 copies into the backends above (ditto_server.py, omnivoice_server.py,
-lux_server.py). These are this project's own code and are tracked in git.
+lux_server.py, higgs_server.py). These are this project's own code and are
+tracked in git.
 
 ---
 
@@ -214,8 +234,8 @@ least one of each:
 - Voice design - from a text description of a voice.
 
 These are what the TTS engines use to speak (Kokoro has built-in voices, but
-Breeze, OmniVoice, and LuxTTS need a clone; Breeze and OmniVoice also use a
-design).
+Breeze, OmniVoice, LuxTTS, and Higgs TTS 3 need a clone; Breeze and OmniVoice
+also use a design).
 
 ### 5. Create a profile
 
@@ -242,8 +262,10 @@ The SSL cert is created on demand - it is never shipped.
   machine it runs on. If you move the install to a different GPU, re-run the
   DITTO conversion step.
 - Model weights are downloaded at install time and are governed by their own
-  licenses. Breeze TTS 2 is research / non-commercial only. See each upstream
-  repo for the others.
+  licenses. Breeze TTS 2 and Higgs TTS 3 (Boson AI) are research /
+  non-commercial only. See each upstream repo for the others. The Higgs C++ port
+  is built from its pinned upstream source during install rather than bundled
+  here (or unpacked from a prebuilt archive you supply via $HIGGS_BINARY_URL).
 - TensorRT and cuDNN are proprietary NVIDIA software. They are not bundled here
   and must be downloaded from NVIDIA.
 - DITTO's upstream README installs it with conda, but this project installs it in

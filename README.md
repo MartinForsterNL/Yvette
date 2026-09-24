@@ -65,6 +65,12 @@ A full walkthrough - the talking avatar, voice cloning, and a tight 8 GB setup.
 - About 60 GB of free disk space
 - An external LLM server (LM Studio, Ollama, llama.cpp, vLLM, etc.) running a
   chat model, exposed over an OpenAI-compatible API.
+- Optional: the Higgs TTS 3 engine (voice cloning), which needs ~3.5 GB of VRAM
+  at the default q4_k quant (~4.5 GB at q6_k, ~5.7 GB at q8_0) and ~2.8 GB of
+  disk for the q4_k weights (~4 GB for q6_k, ~5.1 GB for q8_0). Building it from
+  source also needs the Visual Studio C++ build tools and adds ~12 minutes to the
+  install; set $HIGGS_BINARY_URL in install-config.ps1 to use a prebuilt archive
+  instead.
 
 10 - 12 GB works pretty nicely but 24 GB VRAM is recommended to get the best quality.
 This includes the LLM server. Yvette Voice Avatar AI itself can run in about 6 - 7 GB of VRAM, and the LLM runs on top of that.
@@ -101,7 +107,7 @@ config.yaml          # one config for everything
 tts/                 # TTS module (registry + backends + STT + voices)
 static/              # talk UI + admin UI + default avatar + idle video
 memory.py            # long-term memory (brain)
-engines/             # created by install.ps1: the 4 backend venvs + models (gitignored)
+engines/             # created by install.ps1: the backend venvs + models (gitignored)
 ```
 
 ### How the models run
@@ -113,10 +119,15 @@ engines/             # created by install.ps1: the 4 backend venvs + models (git
 | Breeze (TTS) | subprocess (own venv)  | CUDA |
 | OmniVoice    | subprocess (own venv)  | CUDA |
 | LuxTTS       | subprocess (own venv)  | CUDA |
+| Higgs TTS 3  | subprocess (C++ GGUF server), optional | CUDA |
 | DITTO (avatar)| subprocess (own venv) | CUDA (TensorRT) |
 
 Each subprocess backend is spawned on first use (lazy) and can be unloaded to
 free VRAM from the admin UI.
+
+Higgs TTS 3 is optional and ships three GGUF quants: q4_k (default, fastest and
+lightest), q6_k in the middle, q8_0 closest to the original. Pick the quant under
+the engine's settings in the admin UI; changing it reloads the engine.
 
 ## Settings
 
@@ -131,7 +142,7 @@ Everything is configured from the admin UI (http://localhost:8900/admin):
 - **Minimum generation FPS** - if DITTO renders slower than this, the reply waits for the
   finished clip instead of streaming live (0 = always stream)
 - **Model** - the LLM (any OpenAI-compatible endpoint, set in the LLMs tab)
-- **TTS engine** - breeze / omnivoice / LuxTTS / kokoro
+- **TTS engine** - breeze / omnivoice / LuxTTS / Higgs TTS 3 (optional) / kokoro
 
 ## License
 
@@ -139,6 +150,11 @@ Source code is licensed under the [MIT License](LICENSE). **Model weights are NO
 included** and are governed by their own licenses:
 
 - **Breeze TTS 2** (`BreezeBlue/breeze-tts-2`): research / non-commercial only
+- **Higgs TTS 3** (Boson AI's `bosonai/higgs-tts-3-4b`, GGUF quants from
+  `NeemaShioSe/HiggsTTS3.gguf`): research / non-commercial only (Higgs Audio v3
+  Research and Non-Commercial License). The app ships neither the weights nor the
+  C++ port: install.ps1 builds the port from its pinned upstream source at install
+  time, or unpacks a prebuilt archive you supply.
 - **DITTO**, **OmniVoice**, **LuxTTS**, **Whisper**, **Kokoro**: see each upstream repo
 - **NVIDIA TensorRT**: proprietary, download separately from NVIDIA - not redistributable
 

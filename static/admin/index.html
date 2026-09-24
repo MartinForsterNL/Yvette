@@ -279,6 +279,7 @@
                 <option value="kokoro">kokoro</option>
                 <option value="omnivoice">omnivoice</option>
                 <option value="lux">lux</option>
+                <option value="higgs">higgs</option>
               </select>
             </div>
             <div class="field">
@@ -796,7 +797,7 @@
         <ul class="wiz-reqs">
           <li><strong>breeze</strong> — a free-text natural-language description.</li>
           <li><strong>omnivoice</strong> — a set of voice attributes (gender, age, pitch, style, accent).</li>
-          <li><strong>lux / kokoro</strong> — no design.</li>
+          <li><strong>lux / higgs / kokoro</strong> - no design.</li>
         </ul>
       </div>
 
@@ -867,6 +868,7 @@
         <label class="checkbox-label"><input type="checkbox" value="breeze"> breeze</label>
         <label class="checkbox-label"><input type="checkbox" value="omnivoice"> omnivoice</label>
         <label class="checkbox-label"><input type="checkbox" value="lux"> lux</label>
+        <label class="checkbox-label"><input type="checkbox" value="higgs"> higgs</label>
       </div>
     </div>
     <div class="row actions">
@@ -896,6 +898,7 @@
           <li><strong>breeze</strong> — reference audio + exact transcript. Up to 60s (5–10s advised).</li>
           <li><strong>omnivoice</strong> — reference audio, auto-trimmed to 9s. Transcript optional.</li>
           <li><strong>lux</strong> — reference audio only (no transcript). ~5s used by default.</li>
+          <li><strong>higgs</strong> - reference audio (no trim, uses the full clip). Transcript optional.</li>
           <li><strong>kokoro</strong> — no cloning (fixed preset voices).</li>
         </ul>
         <p class="hint">Tip: clean speech, minimal background noise, no looping.</p>

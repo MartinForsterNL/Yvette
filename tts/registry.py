@@ -21,7 +21,7 @@ import soundfile as sf
 
 from logs import log_event
 
-from .backends import KokoroBackend, BreezeBackend, OmniVoiceBackend, LuxBackend
+from .backends import KokoroBackend, BreezeBackend, OmniVoiceBackend, LuxBackend, HiggsBackend
 from .voices import VoiceStore
 from .stt import STT
 from .chunking import chunk_text
@@ -112,7 +112,7 @@ class TTSManager:
 
     def _resolve_backend_paths(self, cfg):
         cfg = dict(cfg or {})
-        for key in ("python", "repo_dir", "model_path", "server_script"):
+        for key in ("python", "repo_dir", "model_path", "server_script", "bin", "models_dir"):
             if cfg.get(key):
                 cfg[key] = _resolve_path(cfg[key], self.root, self.config)
         return cfg
@@ -127,6 +127,9 @@ class TTSManager:
             self.backends["omnivoice"] = OmniVoiceBackend(self._resolve_backend_paths(models_cfg.get("omnivoice", {})), self.root)
         if models_cfg.get("lux", {}).get("enabled", True):
             self.backends["lux"] = LuxBackend(self._resolve_backend_paths(models_cfg.get("lux", {})), self.root)
+        # higgs stays opt-in: it is only constructed when the config enables it.
+        if models_cfg.get("higgs", {}).get("enabled", False):
+            self.backends["higgs"] = HiggsBackend(self._resolve_backend_paths(models_cfg.get("higgs", {})), self.root)
         for name, be in self.backends.items():
             if be.config.get("auto_start", False):
                 be.ensure_loaded()

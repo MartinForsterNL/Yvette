@@ -4,5 +4,6 @@ from .kokoro import KokoroBackend
 from .breeze import BreezeBackend
 from .omnivoice import OmniVoiceBackend
 from .lux import LuxBackend
+from .higgs import HiggsBackend
 
-__all__ = ["ModelBackend", "TTSResult", "KokoroBackend", "BreezeBackend", "OmniVoiceBackend", "LuxBackend"]
+__all__ = ["ModelBackend", "TTSResult", "KokoroBackend", "BreezeBackend", "OmniVoiceBackend", "LuxBackend", "HiggsBackend"]

@@ -28,6 +28,8 @@ if (Test-Path $ConfigFile) {
     Warn "install-config.ps1 not found (it should ship with the repo). Using empty defaults."
     $HF_TOKEN = ""
     $SKIP_DITTO_CONVERT = $false
+    $SKIP_HIGGS = $false
+    $HIGGS_BINARY_URL = ""
     $HF_ENDPOINT = ""
 }
 
@@ -202,6 +204,124 @@ Copy-Item (Join-Path $Servers "lux_server.py") (Join-Path $lux "lux_server.py") 
 Ok "lux_server.py placed"
 
 # ---------------------------------------------------------------------------
+Step "Higgs TTS 3 (optional TTS)"
+
+# Opt-in engine: set $SKIP_HIGGS = $true in install-config.ps1 to leave it out.
+# Higgs TTS 3 runs as a C++ GGUF server, built here from pinned source (or taken
+# from a prebuilt zip). Boson AI's Higgs Audio v3 license is research /
+# non-commercial only.
+$higgs = Join-Path $Engines "higgs"
+$hBinDir = Join-Path $higgs "bin"
+$hModelsDir = Join-Path $higgs "models"
+$hExe = Join-Path $hBinDir "higgs_server.exe"
+$higgsReady = $false
+
+if ($SKIP_HIGGS) {
+    Warn "higgs skipped (SKIP_HIGGS = true)"
+} else {
+    New-Item -ItemType Directory -Force -Path $higgs, $hModelsDir | Out-Null
+
+    if ($HIGGS_BINARY_URL) {
+        # Prebuilt route: download + unzip an archive and skip the build entirely.
+        # No URL ships with the repo - only use an archive you trust.
+        Step "Higgs - downloading prebuilt binaries"
+        try {
+            $zip = Join-Path $higgs "higgs-prebuilt.zip"
+            Invoke-WebRequest -Uri $HIGGS_BINARY_URL -OutFile $zip -UseBasicParsing
+            New-Item -ItemType Directory -Force -Path $hBinDir | Out-Null
+            Expand-Archive -Path $zip -DestinationPath $hBinDir -Force
+            Remove-Item $zip -Force
+            $higgsReady = Test-Path $hExe
+            if ($higgsReady) { Ok "higgs prebuilt binaries installed" } else { Warn "higgs_server.exe not found in the archive" }
+        } catch {
+            Warn "higgs prebuilt download failed ($_) - skipping the engine"
+        }
+    } else {
+        # Source route: MSVC + portable CMake + a CUDA build (~12 minutes).
+        # MSVC is only needed for this engine: if it is missing we warn and skip,
+        # so the rest of the install still completes.
+        $vcvars = ""
+        $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+        if (Test-Path $vswhere) {
+            $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+            if ($vsPath) { $vcvars = Join-Path $vsPath "VC\Auxiliary\Build\vcvars64.bat" }
+        }
+        if (-not ($vcvars -and (Test-Path $vcvars))) {
+            Warn "MSVC C++ build tools not found - skipping the higgs engine. Install 'Desktop development with C++' in the Visual Studio Build Tools (or set `$HIGGS_BINARY_URL) and re-run install.ps1."
+        } else {
+            Step "Higgs - fetching portable CMake 4.4.3 (zip, no PATH changes)"
+            $cmakeDir = Join-Path $higgs "cmake_raw"
+            $cmake = Join-Path $cmakeDir "cmake-4.4.3-windows-x86_64\bin\cmake.exe"
+            if (-not (Test-Path $cmake)) {
+                $cmakeZip = Join-Path $higgs "cmake.zip"
+                Invoke-WebRequest -Uri "https://github.com/Kitware/CMake/releases/download/v4.4.3/cmake-4.4.3-windows-x86_64.zip" -OutFile $cmakeZip -UseBasicParsing
+                New-Item -ItemType Directory -Force -Path $cmakeDir | Out-Null
+                Expand-Archive -Path $cmakeZip -DestinationPath $cmakeDir -Force
+                Remove-Item $cmakeZip -Force
+            }
+            if (-not (Test-Path $cmake)) {
+                Warn "portable CMake download failed - skipping the higgs build"
+            } else {
+                $hSrc = Join-Path $higgs "HiggsTTS.cpp"
+                if (-not (Test-Path (Join-Path $hSrc ".git"))) {
+                    Step "Higgs - cloning HiggsTTS.cpp (pinned)"
+                    git clone https://github.com/Rafa00127/HiggsTTS.cpp $hSrc
+                    git -C $hSrc checkout 5e9f8f0aac79f7503ee95080867ab283216279aa
+                } else { Warn "higgs repo already cloned" }
+
+                # 86 = Ampere (RTX 30xx). Change the arch for other GPUs.
+                $hBuild = Join-Path $hSrc "build-cu"
+                $hLog = Join-Path $higgs "build.log"
+                $buildCmd = "call `"$vcvars`" && `"$cmake`" -B `"$hBuild`" -S `"$hSrc`" -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_CUDA_ARCHITECTURES=86 && `"$cmake`" --build `"$hBuild`" --config Release -j 8"
+                Step "Higgs - building with CUDA (~12 minutes)"
+                Write-Host "  log: $hLog"
+                # Native stderr must not abort the install under $ErrorActionPreference=Stop
+                # (same reason the DITTO patch block relaxes it).
+                $prevEap = $ErrorActionPreference
+                $ErrorActionPreference = "Continue"
+                & cmd /c $buildCmd 2>&1 | Out-File -FilePath $hLog -Encoding utf8
+                $buildExit = $LASTEXITCODE
+                $ErrorActionPreference = $prevEap
+                if ($buildExit -ne 0) {
+                    Warn "higgs build failed (exit $buildExit) - see $hLog. The install continues without higgs."
+                } else {
+                    Copy-Item (Join-Path $hBuild "bin\Release\*") $hBinDir -Force
+                    $higgsReady = Test-Path $hExe
+                    if ($higgsReady) { Ok "higgs built and installed" } else { Warn "higgs build produced no higgs_server.exe" }
+                }
+            }
+        }
+    }
+
+    if ($higgsReady) {
+        # Only the default quant is downloaded here; higgs_server.py fetches q6_k /
+        # q8_0 from the same repo on demand when you select them in the admin UI.
+        $hModel = Join-Path $hModelsDir "higgs-v3-tts-q4_k.gguf"
+        if (Test-Path $hModel) {
+            Warn "higgs q4_k model already present"
+        } else {
+            try {
+                Step "Higgs - downloading the q4_k model (~2.8 GB)"
+                Invoke-WebRequest -Uri "https://huggingface.co/NeemaShioSe/HiggsTTS3.gguf/resolve/main/higgs-v3-tts-q4_k.gguf" -OutFile $hModel -UseBasicParsing
+                Ok "higgs q4_k model in $hModelsDir"
+            } catch {
+                Warn "higgs model download failed ($_) - it downloads on first use instead"
+            }
+        }
+
+        # The wrapper is stdlib-only (it just drives the C++ exe), so its venv only
+        # keeps the engines/ layout uniform - there are no packages to install.
+        $hVenv = Join-Path $higgs "venv"
+        if (-not (Test-Path (Join-Path $hVenv "Scripts\python.exe"))) { & python -m venv $hVenv }
+
+        Copy-Item (Join-Path $Servers "higgs_server.py") (Join-Path $higgs "higgs_server.py") -Force
+        Ok "higgs_server.py placed"
+    } else {
+        Warn "higgs engine not installed (no binary)"
+    }
+}
+
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 Step "voice-ai app (orchestrator)"
 
@@ -230,6 +350,7 @@ Write-Host "  ditto/      avatar (engines built in checkpoints/ditto_trt_custom)
 Write-Host "  breeze/     TTS"
 Write-Host "  omnivoice/  TTS"
 Write-Host "  lux/        TTS"
+Write-Host "  higgs/      TTS (optional)"
 Write-Host ""
 Write-Host ""
 Write-Host "The app is installed at the repo root. Run start.bat to launch it." -ForegroundColor Green

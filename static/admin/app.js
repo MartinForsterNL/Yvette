@@ -157,9 +157,10 @@ async function unloadModel(name) {
 
 function onModelChange() {
   const model = $("model").value;
-  const isBreeze = (model === "breeze" || model === "omnivoice");
-  $("breeze-opts").style.display = isBreeze ? "" : "none";
-  $("instr-field").style.display = isBreeze ? "" : "none";
+  const isClone = (model === "breeze" || model === "omnivoice" || model === "higgs");
+  const isDesign = (model === "breeze" || model === "omnivoice");
+  $("breeze-opts").style.display = isClone ? "" : "none";
+  $("instr-field").style.display = isDesign ? "" : "none";
   refreshVoices(model);
 }
 
@@ -184,7 +185,7 @@ async function refreshVoices(model) {
     }
   } else {
     // breeze: clone profiles -> voice dropdown, design profiles -> instruction dropdown
-    const clones = voices.filter(v => (v.model === "breeze" || v.model === "omnivoice" || !v.model) && v.kind === "clone");
+    const clones = voices.filter(v => (v.model === "breeze" || v.model === "omnivoice" || v.model === "higgs" || !v.model) && v.kind === "clone");
     const designs = voices.filter(v => (v.model === "breeze" || v.model === "omnivoice" || !v.model) && v.kind === "design");
 
     const optNone = document.createElement("option");
@@ -281,6 +282,9 @@ $("generate").onclick = async () => {
       fd.append("instruction_id", $("instruction").value);
     }
     const cfg = $("cfg").value; if (cfg) fd.append("cfg_scale", cfg);
+    const seed = $("seed").value; if (seed) fd.append("seed", seed);
+  } else if (model === "higgs") {
+    fd.append("voice_id", voice);
     const seed = $("seed").value; if (seed) fd.append("seed", seed);
   } else {
     fd.append("voice", voice);
@@ -2204,6 +2208,7 @@ function renderWizEngines() {
     { name: "breeze", max: 60, note: "up to 60s (5-10s advised)" },
     { name: "omnivoice", max: 9, note: "trims to 9s" },
     { name: "lux", max: 5, note: "uses ~5s" },
+    { name: "higgs", max: 60, note: "uses the full clip" },
   ];
   const compatible = [];
   for (const e of engs) {

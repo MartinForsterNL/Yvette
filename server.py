@@ -86,6 +86,15 @@ ENGINE_SETTINGS = {
         {"key": "rms", "type": "float", "label": "RMS", "desc": "RMS normalization level.", "default": 0.01},
         {"key": "default_voice_id", "type": "voice", "label": "Default voice", "desc": "Default clone voice for this engine.", "default": ""},
     ],
+    "higgs": [
+        {"key": "enabled", "type": "bool", "label": "Enabled", "desc": "Whether the higgs engine (Higgs TTS 3, optional) is available.", "default": False},
+        {"key": "auto_start", "type": "bool", "label": "Auto-start", "desc": "Load the model at server startup instead of on first use.", "default": False},
+        {"key": "quant", "type": "select", "label": "Quant", "desc": "GGUF quantisation: q4_k is fastest and lightest (~3.5 GB VRAM), q6_k balanced (~4.5 GB), q8_0 closest to the original (~5.7 GB). Load-time setting.", "options": ["q4_k","q6_k","q8_0"], "default": "q4_k"},
+        {"key": "temperature", "type": "float", "label": "Temperature", "desc": "Sampling temperature (higher = more varied).", "min": 0.0, "max": 2.0, "default": 0.9},
+        {"key": "seed", "type": "int", "label": "Seed", "desc": "Random seed (fixed when the model loads).", "default": 42},
+        {"key": "default_voice_id", "type": "voice", "label": "Default voice", "desc": "Default clone voice for this engine.", "default": ""},
+        {"key": "port", "type": "int", "label": "Port", "desc": "Internal subprocess port for the higgs server.", "default": 8141},
+    ],
 }
 
 def _save_config(config: dict):
@@ -133,7 +142,9 @@ WHISPER_VRAM_GB = {
     "distil-small.en": 1.0, "distil-medium.en": 1.5,
     "distil-large-v2": 3.0, "distil-large-v3": 3.0,
 }
-TTS_VRAM_GB = {"kokoro": 0.0, "breeze": 2.5, "omnivoice": 2.5, "lux": 2.5}
+# higgs GGUF VRAM (measured): q4_k ~3.5 GB, q6_k ~4.5 GB, q8_0 ~5.7 GB. The
+# fallback below is the q6_k mid-point.
+TTS_VRAM_GB = {"kokoro": 0.0, "breeze": 2.5, "omnivoice": 2.5, "lux": 2.5, "higgs": 4.0}
 DITTO_VRAM_GB = 4.0
 
 
@@ -191,6 +202,12 @@ def _tts_vram_est(name: str, models_cfg: dict, base: str) -> float:
             return sz if sz is not None else fallback
         if name == "lux":
             sz = _dir_size_gb(_hf_cache_dir("luxtts/zipvoice"))
+            return sz if sz is not None else fallback
+        if name == "higgs":
+            # The GGUF quant(s) live under models_dir (engines/higgs/models), not
+            # in the Hugging Face cache.
+            hcfg = models_cfg.get("higgs", {}) or {}
+            sz = _dir_size_gb(_resolve_path(hcfg.get("models_dir", ""), base))
             return sz if sz is not None else fallback
     except Exception:
         pass

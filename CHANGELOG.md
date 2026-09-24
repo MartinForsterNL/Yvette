@@ -2,6 +2,7 @@
 
 ## v0.3 - unreleased
 
+- Higgs TTS 3: optional voice-cloning TTS engine (C++ GGUF server, q4_k/q6_k/q8_0 quants), disabled by default.
 - Streaming: playback starts only once DITTO's generation FPS clears a configurable minimum
   (default 30, averaged over the last 10 samples), then plays through - no bail-out.
 
