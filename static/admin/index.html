@@ -13,19 +13,19 @@
 </header>
 
 <nav class="tabs">
-  <button class="tab active" data-tab="stt">STT</button>
+  <button class="tab" data-tab="llms">LLMs</button>
+  <button class="tab" data-tab="stt">STT</button>
   <button class="tab" data-tab="tts">TTS</button>
   <button class="tab" data-tab="avatars">Avatars</button>
   <button class="tab" data-tab="personalities">Personalities</button>
-  <button class="tab" data-tab="llms">LLMs</button>
-  <button class="tab" data-tab="general">General</button>
-  <button class="tab" data-tab="status">Status</button>
   <button class="tab" data-tab="profiles">Profiles</button>
+  <button class="tab active" data-tab="status">Status</button>
+  <button class="tab" data-tab="general">General</button>
 </nav>
 
 <main>
   <!-- ============ STT ============ -->
-  <section class="tab-panel active" id="panel-stt">
+  <section class="tab-panel" id="panel-stt">
     <aside class="side-menu">
       <div class="side-title">Speech to Text</div>
       <button class="side-item active" data-stt-view="settings">Settings</button>
@@ -645,7 +645,7 @@
   </section>
 
   <!-- ============ STATUS ============ -->
-  <section class="tab-panel" id="panel-status">
+  <section class="tab-panel active" id="panel-status">
     <aside class="side-menu">
       <div class="side-title">Status</div>
       <button class="side-item active" data-status-view="health">Health</button>

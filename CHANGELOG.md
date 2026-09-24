@@ -36,6 +36,12 @@ A version is only "released" when it is pushed - and pushes happen only when Mar
 - Hugging Face downloads authenticate with the token from `config.yaml`, instead of going out
   anonymously (`182b586`).
 - `_work/` moved out of the repo to the project root; the repo ignores it plus runtime logs (`5a97d65`).
+- Default tuning values: `ditto.sampling_timesteps` 30 (was 50) and `stt.compute_type` int8 (was
+  float16) - faster inference for a minimal quality cost.
+
+### Admin UI
+- Admin top menu reordered to LLMs, STT, TTS, Avatars, Personalities, Profiles, Status, General, and
+  the page now lands on the Status tab by default.
 
 ## v0.1 - published on GitHub
 
