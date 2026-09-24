@@ -36,6 +36,11 @@ Env:
   HIGGS_SEED         default random seed (the binary's default is 42)
   HIGGS_EXTRA_ARGS   extra args appended to the child command line
   HIGGS_CHILD_PORT   TCP port for the child (default: HIGGS_PORT + 1)
+  HIGGS_MODEL_REPO   HF repo holding the GGUF quants (default NeemaShioSe/HiggsTTS3.gguf)
+  HF_TOKEN           HF token for the quant downloads (optional; the app sets it
+                     from config.yaml)
+  HF_ENDPOINT        HF endpoint override (e.g. a mirror); read by huggingface_hub
+                     from the environment
 """
 import array
 import io
@@ -47,7 +52,6 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.request
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -67,9 +71,7 @@ QUANT_FILES = {
     "q6_k": "higgs-v3-tts-q6_k.gguf",
     "q8_0": "higgs-v3-tts-q8_0.gguf",
 }
-MODEL_BASE_URL = os.environ.get(
-    "HIGGS_MODEL_URL", "https://huggingface.co/NeemaShioSe/HiggsTTS3.gguf/resolve/main"
-).rstrip("/")
+MODEL_REPO = os.environ.get("HIGGS_MODEL_REPO", "NeemaShioSe/HiggsTTS3.gguf")
 ALLOW_DOWNLOAD = os.environ.get("HIGGS_ALLOW_DOWNLOAD", "1") != "0"
 
 
@@ -127,24 +129,20 @@ def _ensure_model(quant):
     if not ALLOW_DOWNLOAD:
         raise RuntimeError(f"model not found: {path} (auto-download disabled)")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    url = f"{MODEL_BASE_URL}/{os.path.basename(path)}"
-    print(f"[higgs-server] downloading {url} -> {path}", flush=True)
-    tmp = path + ".part"
-    try:
-        with urllib.request.urlopen(url, timeout=120) as resp, open(tmp, "wb") as f:
-            while True:
-                chunk = resp.read(1 << 20)
-                if not chunk:
-                    break
-                f.write(chunk)
-        os.replace(tmp, path)
-    except Exception:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
-        raise
-    print(f"[higgs-server] downloaded {os.path.basename(path)}", flush=True)
+    name = os.path.basename(path)
+    print(f"[higgs-server] downloading {MODEL_REPO}/{name} -> {path}", flush=True)
+    # Same huggingface_hub path as the installer and snapshot_download elsewhere in
+    # the app: no hand-built resolve URL. huggingface_hub reads HF_TOKEN and
+    # HF_ENDPOINT from the environment (the app exports HF_TOKEN from config.yaml).
+    from huggingface_hub import snapshot_download
+    snapshot_download(
+        repo_id=MODEL_REPO,
+        allow_patterns=[name],
+        local_dir=os.path.dirname(path),
+    )
+    if not os.path.isfile(path):
+        raise RuntimeError(f"download finished but {path} is missing")
+    print(f"[higgs-server] downloaded {name}", flush=True)
     return path
 
 

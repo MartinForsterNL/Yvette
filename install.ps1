@@ -294,25 +294,32 @@ if ($SKIP_HIGGS) {
     }
 
     if ($higgsReady) {
+        # The wrapper fetches the non-default quants with huggingface_hub, so its
+        # venv needs the same package the rest of the install uses.
+        $hVenv = Join-Path $higgs "venv"
+        if (-not (Test-Path (Join-Path $hVenv "Scripts\python.exe"))) { & python -m venv $hVenv }
+        $hPy = Join-Path $hVenv "Scripts\python.exe"
+        & $hPy -m pip install --upgrade pip | Out-Null
+        & $hPy -m pip install huggingface_hub
+        Ok "higgs python deps installed"
+
         # Only the default quant is downloaded here; higgs_server.py fetches q6_k /
         # q8_0 from the same repo on demand when you select them in the admin UI.
+        # Same huggingface_hub path as Breeze: the token comes from install-config.ps1
+        # and HF_ENDPOINT is honoured through the environment (set above).
         $hModel = Join-Path $hModelsDir "higgs-v3-tts-q4_k.gguf"
         if (Test-Path $hModel) {
             Warn "higgs q4_k model already present"
         } else {
             try {
                 Step "Higgs - downloading the q4_k model (~2.8 GB)"
-                Invoke-WebRequest -Uri "https://huggingface.co/NeemaShioSe/HiggsTTS3.gguf/resolve/main/higgs-v3-tts-q4_k.gguf" -OutFile $hModel -UseBasicParsing
+                & $hPy -c "from huggingface_hub import snapshot_download; snapshot_download('NeemaShioSe/HiggsTTS3.gguf', token='$HF_TOKEN' or None, allow_patterns=['higgs-v3-tts-q4_k.gguf'], local_dir='$($hModelsDir -replace '\\','/')')"
+                if ($LASTEXITCODE -ne 0) { throw "huggingface_hub download failed (exit $LASTEXITCODE)" }
                 Ok "higgs q4_k model in $hModelsDir"
             } catch {
                 Warn "higgs model download failed ($_) - it downloads on first use instead"
             }
         }
-
-        # The wrapper is stdlib-only (it just drives the C++ exe), so its venv only
-        # keeps the engines/ layout uniform - there are no packages to install.
-        $hVenv = Join-Path $higgs "venv"
-        if (-not (Test-Path (Join-Path $hVenv "Scripts\python.exe"))) { & python -m venv $hVenv }
 
         Copy-Item (Join-Path $Servers "higgs_server.py") (Join-Path $higgs "higgs_server.py") -Force
         Ok "higgs_server.py placed"

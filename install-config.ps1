@@ -22,6 +22,20 @@ $HF_TOKEN = ""
 $SKIP_DITTO_CONVERT = $false
 
 # ---------------------------------------------------------------------------
+# Skip the optional Higgs TTS 3 engine (C++ CUDA build + ~2.8 GB q4_k model).
+# Set to $true to install the rest of the app without it.
+$SKIP_HIGGS = $false
+
+# ---------------------------------------------------------------------------
+# Optional: use prebuilt Higgs TTS 3 binaries instead of building them.
+# Leave empty (default) to build the engine from pinned source during install -
+# that needs the MSVC C++ build tools and takes about 12 minutes. Set this to a
+# zip URL and the installer downloads and unpacks it instead, skipping the build
+# (and the C++ tools requirement). No URL ships with the repo: only use an
+# archive whose author you trust.
+$HIGGS_BINARY_URL = "https://github.com/MartinForsterNL/Yvette/releases/download/higgs-runtime-v1/higgs-tts-runtime-win64-cuda-multiarch.zip"
+
+# ---------------------------------------------------------------------------
 # Optional: Hugging Face endpoint override (e.g. a mirror like hf-mirror.com).
 # Leave empty for the default.
 $HF_ENDPOINT = ""
