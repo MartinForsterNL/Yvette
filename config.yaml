@@ -1,7 +1,7 @@
 auth:
   api_token: ''
   password: Testing123
-  username: Martin
+  username: Admin
 chunking:
   default_mode: chunked
   max_chunk_chars: 400
