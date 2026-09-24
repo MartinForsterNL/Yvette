@@ -839,6 +839,17 @@ async function loadAvatars() {
     const r = await fetch("/api/avatars");
     const d = await r.json();
     const grid = document.getElementById("avatar-admin-grid");
+    // DITTO builds one idle video at a time. While any build is queued or running, keep the
+    // Add avatar button disabled and keep polling until it clears, so uploads cannot stack up.
+    const generating = d.generating || [];
+    const addBtn = document.getElementById("avatar-add");
+    if (addBtn) addBtn.disabled = generating.length > 0;
+    const listStatus = document.getElementById("avatar-list-status");
+    if (listStatus) listStatus.textContent = generating.length
+      ? ("generating idle video... (" + generating.length + " in progress)")
+      : "";
+    clearTimeout(loadAvatars._poll);
+    if (generating.length) loadAvatars._poll = setTimeout(loadAvatars, 4000);
     grid.innerHTML = "";
     for (const a of (d.avatars || [])) {
       const card = document.createElement("div");
@@ -858,6 +869,9 @@ async function loadAvatars() {
       preview.disabled = !a.idle_ready;
       preview.onclick = () => previewIdle(a.id);
       const regen = document.createElement("button");
+      // an idle build is already queued or running - don't let another one stack up
+      regen.disabled = generating.length > 0;
+      if (generating.length) regen.title = "Waiting for the current idle build to finish";
       regen.className = "secondary"; regen.textContent = "Regenerate";
       regen.onclick = async () => { regen.disabled = true; regen.textContent = "Regenerating..."; await fetch("/api/avatars/" + a.id + "/regen", { method: "POST" }); setTimeout(loadAvatars, 2000); };
       const edit = document.createElement("button");

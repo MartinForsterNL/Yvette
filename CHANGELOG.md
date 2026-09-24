@@ -42,6 +42,9 @@ A version is only "released" when it is pushed - and pushes happen only when Mar
 ### Admin UI
 - Admin top menu reordered to LLMs, STT, TTS, Avatars, Personalities, Profiles, Status, General, and
   the page now lands on the Status tab by default.
+- Adding or regenerating an avatar serialises idle-video generation - DITTO builds one at a time
+  and extra requests queue instead of racing for the GPU. The Add and Regenerate buttons disable
+  while a build is queued or running, with the count shown next to Add.
 
 ## v0.1 - published on GitHub
 

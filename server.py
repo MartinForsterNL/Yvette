@@ -729,6 +729,11 @@ class TalkApp:
         # keep the DITTO engine dir populated from static/avatars (the source of truth)
         self._sync_avatars_to_ditto()
 
+        # idle-video generation runs one at a time and reports its busy state to the admin UI
+        self._idle_state_lock = threading.Lock()
+        self._idle_gate = threading.Lock()
+        self._idle_generating = set()
+
         emb_cfg = config.get("memory", {}).get("embedding", {})
         self.embedder = Embedder(
             model_name=emb_cfg.get("model_name", "Qwen/Qwen3-Embedding-0.6B"),
@@ -1257,27 +1262,38 @@ class TalkApp:
         }
 
     def _gen_idle(self, image_name):
+        """Render an avatar idle video. Serialised: DITTO builds one at a time, so extra
+        requests queue here instead of fighting over the GPU. While a build is queued or
+        running the id is reported by /api/avatars as "generating", which keeps the admin
+        Add button disabled."""
         stem = os.path.splitext(image_name)[0]
-        ditto_dir, python, trt, _ = self._ditto_paths()
-        settings = self._avatar_settings(stem)
-        alpha = settings["idle_motion_alpha"]
-        length = settings["idle_length"]
-        img_path = os.path.join(self._static_avatars_dir(), image_name)
-        out_path = os.path.join(ditto_dir, "idle_videos_15", stem + ".mp4")
-        os.makedirs(os.path.dirname(out_path), exist_ok=True)
-        env = dict(os.environ)
-        if trt:
-            env["PATH"] = trt + ";" + env.get("PATH", "")
-        # gen_idle_worker.py uses StreamSDK directly with the configured idle motion.
-        cmd = [python, os.path.join(ditto_dir, "gen_idle_worker.py"), img_path, out_path, str(alpha), str(length)]
+        with self._idle_state_lock:
+            self._idle_generating.add(stem)
         try:
-            r = subprocess.run(cmd, cwd=ditto_dir, env=env, capture_output=True, text=True, timeout=300)
-            if r.returncode == 0 and os.path.exists(out_path):
-                shutil.copy(out_path, os.path.join(self._static_avatars_dir(), stem + ".mp4"))
-                return True
-        except Exception:
-            pass
-        return False
+            with self._idle_gate:
+                ditto_dir, python, trt, _ = self._ditto_paths()
+                settings = self._avatar_settings(stem)
+                alpha = settings["idle_motion_alpha"]
+                length = settings["idle_length"]
+                img_path = os.path.join(self._static_avatars_dir(), image_name)
+                out_path = os.path.join(ditto_dir, "idle_videos_15", stem + ".mp4")
+                os.makedirs(os.path.dirname(out_path), exist_ok=True)
+                env = dict(os.environ)
+                if trt:
+                    env["PATH"] = trt + ";" + env.get("PATH", "")
+                # gen_idle_worker.py uses StreamSDK directly with the configured idle motion.
+                cmd = [python, os.path.join(ditto_dir, "gen_idle_worker.py"), img_path, out_path, str(alpha), str(length)]
+                try:
+                    r = subprocess.run(cmd, cwd=ditto_dir, env=env, capture_output=True, text=True, timeout=300)
+                    if r.returncode == 0 and os.path.exists(out_path):
+                        shutil.copy(out_path, os.path.join(self._static_avatars_dir(), stem + ".mp4"))
+                        return True
+                except Exception:
+                    pass
+                return False
+        finally:
+            with self._idle_state_lock:
+                self._idle_generating.discard(stem)
 
     def _cleanup_media(self):
         """Delete audio + avatar-video files older than their configured TTL."""
@@ -3496,7 +3512,9 @@ def create_app(config: dict) -> FastAPI:
             img_path = os.path.join(a._avatars_dir(), av["image"])
             v = int(os.path.getmtime(img_path)) if os.path.isfile(img_path) else 0
             avs.append({**av, "idle_ready": idle_ready, "v": v, **a._avatar_settings(av["id"]), "overrides": av["id"] in settings})
-        return {"avatars": avs}
+        with a._idle_state_lock:
+            generating = sorted(a._idle_generating)
+        return {"avatars": avs, "generating": generating}
 
     @app.put("/api/avatars/{avatar_id}")
     async def edit_avatar(avatar_id: str, image: UploadFile = File(None), head_motion_alpha: str = Form(""), idle_motion_alpha: str = Form(""), idle_length: str = Form(""), name: str = Form("")):
