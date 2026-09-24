@@ -13,6 +13,8 @@ ditto:
   images_dir: ditto/example/images
   python: ditto/venv/Scripts/python.exe
   sampling_timesteps: 30
+  min_generation_fps: 30.0
+  fps_sample_count: 10
   stream_playback_buffer: 1.0
   tensorrt_lib: ../TensorRT/TensorRT-8.6.1.6/lib
 ffmpeg: ''
