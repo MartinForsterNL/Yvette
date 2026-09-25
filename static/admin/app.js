@@ -2208,7 +2208,7 @@ function renderWizEngines() {
     { name: "breeze", max: 60, note: "up to 60s (5-10s advised)" },
     { name: "omnivoice", max: 9, note: "trims to 9s" },
     { name: "lux", max: 5, note: "uses ~5s" },
-    { name: "higgs", max: 60, note: "uses the full clip" },
+    { name: "higgs", max: 60, note: "uses the full clip; 3-10s advised" },
   ];
   const compatible = [];
   for (const e of engs) {
