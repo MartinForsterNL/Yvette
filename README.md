@@ -10,7 +10,7 @@ the personality that feels right. Make it yours.
 
 ## Demo
 
-[![Watch the Yvette demo](https://img.youtube.com/vi/pK3GywJhqTc/hqdefault.jpg)](https://youtu.be/pK3GywJhqTc)
+[![Watch the Yvette demo](https://img.youtube.com/vi/8BZxwaNtMko/hqdefault.jpg)](https://youtu.be/8BZxwaNtMko)
 
 A full walkthrough - the talking avatar, voice cloning, and a tight 8 GB setup.
 
