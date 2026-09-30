@@ -2002,6 +2002,16 @@ def create_app(config: dict) -> FastAPI:
         token = request.cookies.get("talk_session")
         if token and token in a.sessions:
             return await call_next(request)
+        # API token (admin General > Server > "Generate new API key"):
+        # "Authorization: Bearer <token>" or "X-API-Key: <token>".
+        api_token = (a.auth.get("api_token") or "").strip()
+        supplied = (request.headers.get("Authorization") or "").strip()
+        if supplied.lower().startswith("bearer "):
+            supplied = supplied[7:].strip()
+        else:
+            supplied = (request.headers.get("X-API-Key") or "").strip()
+        if api_token and supplied and secrets.compare_digest(supplied, api_token):
+            return await call_next(request)
         if path.startswith("/api/"):
             return JSONResponse({"detail": "unauthorized"}, status_code=401)
         return RedirectResponse("/login?next=" + quote(path, safe="/"), status_code=303)
