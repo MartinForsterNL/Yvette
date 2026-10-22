@@ -1,3 +1,4 @@
+
 # install-config.ps1
 #
 # Edit this file BEFORE running install.ps1. It ships with the repo with empty
@@ -25,6 +26,11 @@ $SKIP_DITTO_CONVERT = $false
 # Skip the optional Higgs TTS 3 engine (C++ CUDA build + ~2.8 GB q4_k model).
 # Set to $true to install the rest of the app without it.
 $SKIP_HIGGS = $false
+
+# ---------------------------------------------------------------------------
+# Skip the optional Orpheus TTS engine (llama.cpp + SNAC, Q4_K_M model).
+# Adds about 7 GB of disk and needs roughly 4 GB of VRAM while loaded.
+$SKIP_ORPHEUS = $false
 
 # ---------------------------------------------------------------------------
 # Optional: use prebuilt Higgs TTS 3 binaries instead of building them.

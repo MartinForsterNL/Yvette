@@ -128,6 +128,19 @@ models:
     server_script: omnivoice/omnivoice_server.py
     default_voice_id: v_1789917885_8aaccb
     default_instruction_id: v_1789909191_a8fb8d
+  orpheus:
+    auto_start: false
+    bin: orpheus/llama/llama-server.exe
+    default_voice: tara
+    enabled: true
+    llama_port: 8143
+    max_tokens: 8192
+    model_path: orpheus/models/Orpheus-3b-FT-Q4_K_M.gguf
+    port: 8142
+    python: orpheus/venv/Scripts/python.exe
+    server_script: orpheus/orpheus_server.py
+    temperature: 0.6
+    top_p: 0.9
   unload_idle_minutes: 60
 paths:
   base: engines
