@@ -1,9 +1,11 @@
 # Changelog - Yvette Voice Avatar AI
 
-## v0.4 - unreleased
+## v0.4 - 2026-10-22
 
 - TTS: Orpheus engine (Q4_K_M, 25 preset voices, emotion tags; llama.cpp + SNAC).
-- Admin: Orpheus engine settings in the TTS tab; preset voices exposed in Test and Profiles.
+- Admin: Orpheus engine settings in the TTS tab; preset voices in Test and Profiles.
+- Install: optional Orpheus section with `$SKIP_ORPHEUS`, pinned llama.cpp and Q4 model.
+- UI: capability-driven preset voice rows; asset version bump.
 
 ## v0.3 - 2026-09-24
 
