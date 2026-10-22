@@ -5,7 +5,7 @@ lip-synced avatar, all behind one backend.
 
 The app (the orchestrator) ships in this repo. The heavy AI models run as
 separate backends, each in its own Python environment so their dependency sets
-can't clash. One of them (Higgs TTS 3) is optional. This guide covers how to
+can't clash. Two of them (Higgs TTS 3 and Orpheus) are optional. This guide covers how to
 install everything.
 
 ## What gets installed
@@ -18,6 +18,7 @@ install everything.
 | OmniVoice  | Text-to-speech (multilingual)    | k2-fsa/OmniVoice |
 | LuxTTS     | Text-to-speech (voice cloning)   | ysharma3501/LuxTTS |
 | Higgs TTS 3 | Text-to-speech (voice cloning, optional) | Rafa00127/HiggsTTS.cpp + NeemaShioSe/HiggsTTS3.gguf |
+| Orpheus    | Text-to-speech (preset voices, optional) | Lex-au/Orpheus-FastAPI + lex-au/Orpheus-3b-FT-Q4_K_M.gguf |
 | Whisper (STT) | Speech-to-text, in-process | large-v3-turbo |
 | Kokoro (TTS)  | Text-to-speech, in-process, CPU | bf_isabella |
 | Embeddings    | Memory embeddings, in-process | Qwen/Qwen3-Embedding-0.6B |
@@ -29,7 +30,7 @@ install everything.
 - The latest NVIDIA GPU driver (Triton needs a recent driver)
 - 12 GB VRAM minimum. 10-12 GB works pretty nicely; 24 GB is recommended for
   the best quality.
-- About 60 GB of free disk space
+- About 60 GB of free disk space, plus roughly 7 GB if the optional Orpheus engine is installed
 - A free NVIDIA developer account (needed to download cuDNN and TensorRT)
 
 ---
@@ -143,6 +144,10 @@ Your token is a secret. Do not commit install-config.ps1 with your token
 filled in if you fork the repo. If you leave the token empty, the installer
 will ask you for it interactively.
 
+The file also has two optional-engine switches: `$SKIP_HIGGS` and
+`$SKIP_ORPHEUS`. Both default to `$false`. Set either to `$true` to install
+everything else without that engine.
+
 ### 2. Run the installer
 
 Double-click install.bat (or run it from a command prompt). It launches the
@@ -159,7 +164,8 @@ It will:
 
 1. Verify the prerequisites (Python, git, git-lfs, ffmpeg, and the TensorRT
    folder from Part 1).
-2. Clone the four upstream repos.
+2. Clone the upstream repos (DITTO, Breeze, LuxTTS, and optionally Higgs TTS 3
+   and Orpheus).
 3. Create a Python venv for each backend.
 4. Install each backend's dependencies (PyTorch with CUDA, plus engine-specific
    packages). Triton is installed from triton-windows on PyPI, and the TensorRT
@@ -176,9 +182,14 @@ no build), then fetch the default q4_k GGUF (~2.8 GB). Set `$SKIP_HIGGS = $true`
 install-config.ps1 to leave it out entirely. If you clear `$HIGGS_BINARY_URL`, it falls back
 to cloning the pinned HiggsTTS.cpp and building its CUDA server (~12 minutes), which does need
 the MSVC build tools from step 7.
-10. Create the app venv and install its Python dependencies (requirements.txt).
-11. Generate a random api_token and write your HF token into config.yaml.
-12. Pre-download the internal models (Whisper, Kokoro, embeddings).
+10. Install the optional Orpheus TTS engine: clone the pinned Orpheus-FastAPI repo, create its
+Python venv with torch cu124, unpack a pinned llama.cpp Windows CUDA build, fetch the
+Q4_K_M model (~2.36 GB) and verify its GGUF header, then copy the wrapper in. Set
+`$SKIP_ORPHEUS = $true` to leave it out. Orpheus needs about 4 GB of VRAM while loaded and
+has no Dutch voice and no cloning.
+11. Create the app venv and install its Python dependencies (requirements.txt).
+12. Generate a random api_token and write your HF token into config.yaml.
+13. Pre-download the internal models (Whisper, Kokoro, embeddings).
 
 ---
 
@@ -191,12 +202,13 @@ engines/
   omnivoice/      # venv (model downloads on first run)
   lux/            # cloned repo + venv (model downloads on first run)
   higgs/          # cloned repo + build-cu/ + bin/ + models/ + venv (optional engine)
+  orpheus/        # cloned repo + venv + llama/ + models/ + wrapper (optional engine)
 ```
 
 The repo's servers/ folder holds the wrapper servers that the installer
 copies into the backends above (ditto_server.py, omnivoice_server.py,
-lux_server.py, higgs_server.py). These are this project's own code and are
-tracked in git.
+lux_server.py, higgs_server.py, orpheus_server.py). These are this project's own
+code and are tracked in git.
 
 ---
 
@@ -233,9 +245,10 @@ least one of each:
 - Voice clone - from a short audio sample of a voice.
 - Voice design - from a text description of a voice.
 
-These are what the TTS engines use to speak (Kokoro has built-in voices, but
+These are what the clone/design engines use to speak. Kokoro and Orpheus have
+built-in preset voices instead: pick one in the profile or in Voice settings.
 Breeze, OmniVoice, LuxTTS, and Higgs TTS 3 need a clone; Breeze and OmniVoice
-also use a design).
+also use a design.
 
 ### 5. Create a profile
 
@@ -263,7 +276,8 @@ The SSL cert is created on demand - it is never shipped.
   DITTO conversion step.
 - Model weights are downloaded at install time and are governed by their own
   licenses. Breeze TTS 2 and Higgs TTS 3 (Boson AI) are research /
-  non-commercial only. See upstream repo for the others - the Higgs C++ port is
+  non-commercial only. Orpheus and the Orpheus-FastAPI project are Apache-2.0.
+  See upstream repo for the others - the Higgs C++ port is
   https://github.com/Rafa00127/HiggsTTS.cpp. It installs from a prebuilt archive by
   default, or is built from pinned upstream source when that URL is cleared.
 - TensorRT and cuDNN are proprietary NVIDIA software. They are not bundled here
