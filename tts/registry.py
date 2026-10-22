@@ -21,7 +21,7 @@ import soundfile as sf
 
 from logs import log_event
 
-from .backends import KokoroBackend, BreezeBackend, OmniVoiceBackend, LuxBackend, HiggsBackend
+from .backends import KokoroBackend, BreezeBackend, OmniVoiceBackend, LuxBackend, HiggsBackend, OrpheusBackend
 from .voices import VoiceStore
 from .stt import STT
 from .chunking import chunk_text
@@ -130,6 +130,9 @@ class TTSManager:
         # higgs stays opt-in: it is only constructed when the config enables it.
         if models_cfg.get("higgs", {}).get("enabled", False):
             self.backends["higgs"] = HiggsBackend(self._resolve_backend_paths(models_cfg.get("higgs", {})), self.root)
+        # orpheus is opt-in in code; the shipped config enables it.
+        if models_cfg.get("orpheus", {}).get("enabled", False):
+            self.backends["orpheus"] = OrpheusBackend(self._resolve_backend_paths(models_cfg.get("orpheus", {})), self.root)
         for name, be in self.backends.items():
             if be.config.get("auto_start", False):
                 be.ensure_loaded()

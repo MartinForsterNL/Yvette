@@ -95,6 +95,16 @@ ENGINE_SETTINGS = {
         {"key": "default_voice_id", "type": "voice", "label": "Default voice", "desc": "Default clone voice for this engine.", "default": ""},
         {"key": "port", "type": "int", "label": "Port", "desc": "Internal subprocess port for the higgs server.", "default": 8141},
     ],
+    "orpheus": [
+        {"key": "enabled", "type": "bool", "label": "Enabled", "desc": "Whether the Orpheus engine (llama.cpp + SNAC, preset voices) is available.", "default": True},
+        {"key": "auto_start", "type": "bool", "label": "Auto-start", "desc": "Load the model at server startup instead of on first use.", "default": False},
+        {"key": "default_voice", "type": "select", "label": "Default voice", "desc": "Default preset voice. tara is the upstream default.", "options": ["tara","leah","jess","leo","dan","mia","zac","zoe","pierre","amelie","marie","jana","thomas","max","유나","준서","ऋतिका","长乐","白芷","javi","sergio","maria","pietro","giulia","carlo"], "default": "tara"},
+        {"key": "temperature", "type": "float", "label": "Temperature", "desc": "Sampling temperature (higher = more varied). Load-time setting; reload the engine to apply.", "min": 0.0, "max": 1.5, "default": 0.6},
+        {"key": "top_p", "type": "float", "label": "Top-p", "desc": "Nucleus sampling. Load-time setting; reload the engine to apply.", "min": 0.1, "max": 1.0, "default": 0.9},
+        {"key": "max_tokens", "type": "int", "label": "Max tokens", "desc": "Token budget for one generation. Also sets the llama.cpp context. Load-time setting.", "default": 8192},
+        {"key": "port", "type": "int", "label": "Wrapper port", "desc": "Internal port for the Orpheus wrapper.", "default": 8142},
+        {"key": "llama_port", "type": "int", "label": "llama.cpp port", "desc": "Internal port for the llama.cpp child.", "default": 8143},
+    ],
 }
 
 def _save_config(config: dict):

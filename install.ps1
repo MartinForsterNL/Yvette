@@ -329,6 +329,79 @@ if ($SKIP_HIGGS) {
 }
 
 # ---------------------------------------------------------------------------
+Step "Orpheus TTS (optional TTS)"
+
+# Preset-voice engine: llama.cpp with Orpheus 3B Q4_K_M plus the SNAC decoder in
+# a Python wrapper. No cloning and no design; 25 voices across 8 languages.
+# Needs about 7 GB of disk and roughly 4 GB of VRAM while loaded.
+$orpheus = Join-Path $Engines "orpheus"
+$oVenv = Join-Path $orpheus "venv"
+$oLlama = Join-Path $orpheus "llama"
+$oModels = Join-Path $orpheus "models"
+
+if ($SKIP_ORPHEUS) {
+    Warn "orpheus skipped (SKIP_ORPHEUS = true)"
+} else {
+    if (-not (Test-Path (Join-Path $orpheus ".git"))) {
+        New-Item -ItemType Directory -Force -Path $orpheus | Out-Null
+        git clone https://github.com/Lex-au/Orpheus-FastAPI.git $orpheus
+        git -C $orpheus checkout 7bd4cfceeff047571d8bee0a254ea740b91265be  # pinned
+    } else { Warn "orpheus repo already cloned" }
+
+    if (-not (Test-Path (Join-Path $oVenv "Scripts\python.exe"))) { & python -m venv $oVenv }
+    $oPy = Join-Path $oVenv "Scripts\python.exe"
+
+    & $oPy -m pip install --upgrade pip | Out-Null
+    & $oPy -m pip install torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu124
+    & $oPy -m pip install -r (Join-Path $orpheus "requirements.txt")
+    & $oPy -m pip install huggingface_hub
+    Ok "orpheus python deps installed"
+
+    # llama.cpp, pinned. Both zips unpack into the same folder so the CUDA
+    # runtime DLLs sit next to llama-server.exe.
+    New-Item -ItemType Directory -Force -Path $oLlama,$oModels | Out-Null
+    if (-not (Test-Path (Join-Path $oLlama "llama-server.exe"))) {
+        $lz = Join-Path $oLlama "llama.zip"
+        $cz = Join-Path $oLlama "cudart.zip"
+        if (-not (Test-Path $lz)) { & curl.exe -L --retry 5 -o $lz "https://github.com/ggml-org/llama.cpp/releases/download/b11819/llama-b11819-bin-win-cuda-12.4-x64.zip" }
+        if (-not (Test-Path $cz)) { & curl.exe -L --retry 5 -o $cz "https://github.com/ggml-org/llama.cpp/releases/download/b11819/cudart-llama-bin-win-cuda-12.4-x64.zip" }
+        Expand-Archive -Path $lz -DestinationPath $oLlama -Force
+        Expand-Archive -Path $cz -DestinationPath $oLlama -Force
+        $lsrv = Get-ChildItem -Path $oLlama -Filter "llama-server.exe" -Recurse | Select-Object -First 1
+        if ($lsrv -and $lsrv.DirectoryName -ne $oLlama) {
+            Copy-Item (Join-Path $lsrv.DirectoryName "*") $oLlama -Recurse -Force
+        }
+    } else { Warn "llama.cpp already present" }
+    Ok "llama.cpp ready"
+
+    # Q4_K_M model (2.36 GB). Download through huggingface_hub so HF_ENDPOINT
+    # and the token are honoured, then verify the GGUF magic before trusting it.
+    $oModel = Join-Path $oModels "Orpheus-3b-FT-Q4_K_M.gguf"
+    if (-not (Test-Path $oModel)) {
+        Step "Orpheus - downloading Q4_K_M model (~2.36 GB)"
+        $pyModel = $oModel -replace '\\','/'
+        & $oPy -c "from huggingface_hub import hf_hub_download; hf_hub_download('lex-au/Orpheus-3b-FT-Q4_K_M.gguf', 'Orpheus-3b-FT-Q4_K_M.gguf', local_dir=r'$pyModel', token='$HF_TOKEN' or None)"
+    } else { Warn "orpheus model already present" }
+
+    if (Test-Path $oModel) {
+        $magic = ""
+        try {
+            $fs = [IO.File]::OpenRead($oModel); $buf = New-Object byte[] 4
+            $fs.Read($buf,0,4) | Out-Null; $fs.Close()
+            $magic = [Text.Encoding]::ASCII.GetString($buf)
+        } catch {}
+        if ($magic -ne "GGUF") {
+            Warn "orpheus model does not start with GGUF (got '$magic') - delete it and re-run the installer"
+        } else { Ok "orpheus model verified (Q4_K_M)" }
+    } else {
+        Warn "orpheus model missing - the engine stays unavailable until it is downloaded"
+    }
+
+    Copy-Item (Join-Path $Servers "orpheus_server.py") (Join-Path $orpheus "orpheus_server.py") -Force
+    Ok "orpheus_server.py placed"
+}
+
+# ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 Step "voice-ai app (orchestrator)"
 
@@ -358,6 +431,7 @@ Write-Host "  breeze/     TTS"
 Write-Host "  omnivoice/  TTS"
 Write-Host "  lux/        TTS"
 Write-Host "  higgs/      TTS (optional)"
+Write-Host "  orpheus/    TTS (preset voices, optional)"
 Write-Host ""
 Write-Host ""
 Write-Host "The app is installed at the repo root. Run start.bat to launch it." -ForegroundColor Green

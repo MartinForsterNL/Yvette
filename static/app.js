@@ -580,8 +580,6 @@ async function loadVoices() {
 function updateVoiceDropdowns(engineName) {
   const known = !!engineCaps[engineName];
   const caps = engineCaps[engineName] || { supports_cloning: false, supports_design: false, voices: [], settings: [] };
-  const isKokoro = engineName === "kokoro";
-
   const presetSel = $("voice-preset");
   presetSel.innerHTML = "";
   for (const v of (caps.voices || [])) {
@@ -634,10 +632,12 @@ function updateVoiceDropdowns(engineName) {
     }
   }
 
-  $("row-voice-preset").style.display = isKokoro ? "" : "none";
-  $("row-kokoro-speed").style.display = isKokoro ? "" : "none";
-  $("row-voice").style.display = !isKokoro ? "" : "none";
-  $("row-instruction").style.display = (!isKokoro && designSel.options.length > 1) ? "" : "none";
+  const hasPresets = (caps.voices || []).length > 0;
+  const hasSpeed = (caps.settings || []).some((s) => s.name === "speed");
+  $("row-voice-preset").style.display = hasPresets ? "" : "none";
+  $("row-kokoro-speed").style.display = hasSpeed ? "" : "none";
+  $("row-voice").style.display = caps.supports_cloning ? "" : "none";
+  $("row-instruction").style.display = (caps.supports_design && designSel.options.length > 1) ? "" : "none";
 }
 
 function updateSpeedLabel() {

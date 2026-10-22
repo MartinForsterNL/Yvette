@@ -69,6 +69,9 @@ A full walkthrough - the talking avatar, voice cloning, and a tight 8 GB setup.
   It installs from a prebuilt CUDA runtime that the installer downloads, so no compiler is
   needed. Clearing `$HIGGS_BINARY_URL` in install-config.ps1 falls back to building it from
   source, which needs the Visual Studio C++ build tools and adds about 12 minutes.
+- Optional: the Orpheus TTS engine (preset voices and emotion tags), ~4 GB of VRAM and
+  ~7 GB of disk. It runs llama.cpp with a Q4_K_M Orpheus 3B model plus the SNAC decoder.
+  Set `$SKIP_ORPHEUS = $true` in install-config.ps1 to leave it out.
 
 10 - 12 GB works pretty nicely but 24 GB VRAM is recommended to get the best quality.
 This includes the LLM server. Yvette Voice Avatar AI itself can run in about 6 - 7 GB of VRAM, and the LLM runs on top of that.
@@ -118,6 +121,7 @@ engines/             # created by install.ps1: the backend venvs + models (gitig
 | OmniVoice    | subprocess (own venv)  | CUDA |
 | LuxTTS       | subprocess (own venv)  | CUDA |
 | Higgs TTS 3  | subprocess (C++ GGUF server), optional | CUDA |
+| Orpheus TTS  | subprocess (llama.cpp + SNAC), optional | CUDA |
 | DITTO (avatar)| subprocess (own venv) | CUDA (TensorRT) |
 
 Each subprocess backend is spawned on first use (lazy) and can be unloaded to
@@ -126,6 +130,10 @@ free VRAM from the admin UI.
 Higgs TTS 3 is optional and ships three GGUF quants: q4_k (default, fastest and
 lightest), q6_k in the middle, q8_0 closest to the original. Pick the quant under
 the engine's settings in the admin UI; changing it reloads the engine.
+
+Orpheus is optional and preset-voice only: 25 voices across 8 languages, with inline
+emotion tags (`<laugh>`, `<sigh>`). It does not clone a voice and has no Dutch voice;
+the other engines cover those cases.
 
 ## Settings
 
@@ -140,7 +148,7 @@ Everything is configured from the admin UI (http://localhost:8900/admin):
 - **Minimum generation FPS** - if DITTO renders slower than this, the reply waits for the
   finished clip instead of streaming live (0 = always stream)
 - **Model** - the LLM (any OpenAI-compatible endpoint, set in the LLMs tab)
-- **TTS engine** - breeze / omnivoice / LuxTTS / Higgs TTS 3 (optional) / kokoro
+- **TTS engine** - breeze / omnivoice / LuxTTS / Higgs TTS 3 (optional) / Orpheus (optional) / kokoro
 
 ## License
 
@@ -154,6 +162,8 @@ included** and are governed by their own licenses:
   port's source: the installer unpacks a prebuilt archive of the port, or builds it
   from pinned upstream source if that URL is cleared.
 - **HiggsTTS.cpp** (https://github.com/Rafa00127/HiggsTTS.cpp): see upstream repo
+- **Orpheus TTS 3** (`lex-au/Orpheus-3b-FT-Q4_K_M.gguf`): Apache-2.0, as is the
+  `Lex-au/Orpheus-FastAPI` project it runs on.
 - **DITTO**, **OmniVoice**, **LuxTTS**, **Whisper**, **Kokoro**: see upstream repo
 - **NVIDIA TensorRT**: proprietary, download separately from NVIDIA - not redistributable
 

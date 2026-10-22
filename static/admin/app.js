@@ -157,9 +157,9 @@ async function unloadModel(name) {
 
 function onModelChange() {
   const model = $("model").value;
-  const isClone = (model === "breeze" || model === "omnivoice" || model === "higgs");
+  const showCloneOpts = (model === "breeze" || model === "omnivoice" || model === "higgs");
   const isDesign = (model === "breeze" || model === "omnivoice");
-  $("breeze-opts").style.display = isClone ? "" : "none";
+  $("breeze-opts").style.display = showCloneOpts ? "" : "none";
   $("instr-field").style.display = isDesign ? "" : "none";
   refreshVoices(model);
 }
@@ -175,16 +175,21 @@ async function refreshVoices(model) {
   const curInstr = instr.value;
   sel.innerHTML = "";
   instr.innerHTML = "";
-  if (model === "kokoro") {
-    const m = models.find(x => x.name === "kokoro");
-    for (const v of (m ? m.voices : [])) {
+
+  const engine = models.find((x) => x.name === model) || {};
+  const presets = engine.voices || [];
+
+  if (presets.length) {
+    // Preset-voice engines (kokoro, orpheus): the engine owns the voice list.
+    for (const v of presets) {
       const opt = document.createElement("option");
       opt.value = v.id;
       opt.textContent = v.name;
+      if (v.default === true) opt.selected = true;
       sel.appendChild(opt);
     }
   } else {
-    // breeze: clone profiles -> voice dropdown, design profiles -> instruction dropdown
+    // Clone/design engines: profiles from the voice store.
     const clones = voices.filter(v => (v.model === "breeze" || v.model === "omnivoice" || v.model === "higgs" || !v.model) && v.kind === "clone");
     const designs = voices.filter(v => (v.model === "breeze" || v.model === "omnivoice" || !v.model) && v.kind === "design");
 
@@ -1771,7 +1776,8 @@ function updateProfVoiceDropdowns(engineName) {
   const engine = profEngines.find((e) => e.name === engineName) || {};
   const supportsClone = !!engine.supports_cloning;
   const supportsDesign = !!engine.supports_design;
-  const isKokoro = engineName === "kokoro";
+  const hasPresets = (engine.voices || []).length > 0;
+  const hasSpeed = (engine.settings || []).some((s) => s.name === "speed");
 
   const psel = document.getElementById("prof-voice-preset");
   const spd = document.getElementById("prof-speed");
@@ -1807,10 +1813,10 @@ function updateProfVoiceDropdowns(engineName) {
   }
   dsel.disabled = designs.length === 0;
 
-  document.getElementById("prof-row-voice-preset").style.display = isKokoro ? "" : "none";
-  document.getElementById("prof-row-speed").style.display = isKokoro ? "" : "none";
-  document.getElementById("prof-row-voice").style.display = !isKokoro ? "" : "none";
-  document.getElementById("prof-row-design").style.display = (!isKokoro && supportsDesign) ? "" : "none";
+  document.getElementById("prof-row-voice-preset").style.display = hasPresets ? "" : "none";
+  document.getElementById("prof-row-speed").style.display = hasSpeed ? "" : "none";
+  document.getElementById("prof-row-voice").style.display = supportsClone ? "" : "none";
+  document.getElementById("prof-row-design").style.display = supportsDesign ? "" : "none";
 }
 
 document.getElementById("prof-tts").onchange = () => updateProfVoiceDropdowns(document.getElementById("prof-tts").value);
@@ -1907,6 +1913,8 @@ document.getElementById("prof-save").onclick = async () => {
   fd.append("tts_model", document.getElementById("prof-tts").value);
   fd.append("voice_id", document.getElementById("prof-voice").value);
   fd.append("instruction_id", document.getElementById("prof-design").value);
+  fd.append("voice", document.getElementById("prof-voice-preset").value);
+  fd.append("speed", document.getElementById("prof-speed").value);
   fd.append("voice", document.getElementById("prof-voice-preset").value);
   fd.append("speed", document.getElementById("prof-speed").value);
   fd.append("model", document.getElementById("prof-model").value);

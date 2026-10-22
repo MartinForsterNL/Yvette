@@ -1,5 +1,10 @@
 # Changelog - Yvette Voice Avatar AI
 
+## v0.4 - unreleased
+
+- TTS: Orpheus engine (Q4_K_M, 25 preset voices, emotion tags; llama.cpp + SNAC).
+- Admin: Orpheus engine settings in the TTS tab; preset voices exposed in Test and Profiles.
+
 ## v0.3 - 2026-09-24
 
 - Streaming: minimum generation FPS gate (`ditto.min_generation_fps`, `fps_sample_count`).

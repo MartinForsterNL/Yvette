@@ -12,7 +12,7 @@ if ($serverPid) {
 # 2. Stop the model subprocesses (DITTO, breeze, omnivoice, lux, higgs + idle worker).
 #    These are spawned by the app server and may be orphaned if it was killed.
 Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object {
-    $_.CommandLine -match 'ditto_server\.py|breeze_infer|omnivoice_server\.py|lux_server\.py|higgs_server\.py|gen_idle_worker\.py'
+    $_.CommandLine -match 'ditto_server\.py|breeze_infer|omnivoice_server\.py|lux_server\.py|higgs_server\.py|orpheus_server\.py|gen_idle_worker\.py'
 } | ForEach-Object {
     taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null
 }
@@ -20,6 +20,15 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object {
 # 3. Higgs also runs a C++ child (higgs_server.exe) that holds the VRAM and is
 #    not a python.exe, so sweep it separately.
 Get-CimInstance Win32_Process -Filter "Name='higgs_server.exe'" | ForEach-Object {
+    taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null
+}
+
+
+# 4. Orpheus runs llama-server.exe as a child. Match the Orpheus path or model
+#    so another llama.cpp server on the machine is left alone.
+Get-CimInstance Win32_Process -Filter "Name='llama-server.exe'" | Where-Object {
+    $_.CommandLine -match 'Orpheus-3b|\\orpheus\\'
+} | ForEach-Object {
     taskkill /PID $_.ProcessId /T /F 2>$null | Out-Null
 }
 
